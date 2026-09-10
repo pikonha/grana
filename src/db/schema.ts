@@ -27,12 +27,13 @@ export const faturaPayment = pgTable('fatura_payment', {
 export const recurrenceRule = pgTable('recurrence_rule', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(), amount: integer().notNull(),
   type: txTypeEnum().notNull(), interval: intervalEnum().notNull(), nextRun: date('next_run').notNull(),
+  accountId: uuid('account_id').references(() => account.id, { onDelete: 'set null' }),
   note: text(),
 })
 
 export const installmentPlan = pgTable('installment_plan', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(),
-  accountId: uuid('account_id').notNull().references(() => account.id, { onDelete: 'cascade' }),
+  accountId: uuid('account_id').references(() => account.id, { onDelete: 'set null' }),
   totalAmount: integer('total_amount').notNull(), count: integer().notNull(),
   startDate: date('start_date').notNull(), note: text(),
 })
@@ -43,7 +44,7 @@ export const transaction = pgTable('transaction', {
   accountId: uuid('account_id').references(() => account.id, { onDelete: 'set null' }),
   counterAccountId: uuid('counter_account_id').references(() => account.id, { onDelete: 'set null' }),
   installmentPlanId: uuid('installment_plan_id').references(() => installmentPlan.id, { onDelete: 'cascade' }),
-  recurrenceRuleId: uuid('recurrence_rule_id').references(() => recurrenceRule.id, { onDelete: 'cascade' }),
+  recurrenceRuleId: uuid('recurrence_rule_id').references(() => recurrenceRule.id, { onDelete: 'set null' }),
   periodKey: text('period_key'), note: text(), createdAt: timestamp('created_at').defaultNow(),
 }, (t) => [unique('uq_recurrence_period').on(t.recurrenceRuleId, t.periodKey)])
 

@@ -13,6 +13,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
+import { Route as OauthConsentRouteImport } from './routes/oauth.consent'
 import { Route as ApiTransactionsRouteImport } from './routes/api/transactions'
 import { Route as ApiMcpRouteImport } from './routes/api/mcp'
 import { Route as AuthedTransactionsRouteImport } from './routes/_authed/transactions'
@@ -43,6 +44,11 @@ const AuthedIndexRoute = AuthedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthedRoute,
+} as any)
+const OauthConsentRoute = OauthConsentRouteImport.update({
+  id: '/oauth/consent',
+  path: '/oauth/consent',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTransactionsRoute = ApiTransactionsRouteImport.update({
   id: '/api/transactions',
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof AuthedTransactionsRoute
   '/api/mcp': typeof ApiMcpRoute
   '/api/transactions': typeof ApiTransactionsRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/faturas/$accountId': typeof AuthedFaturasAccountIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/materialize-recurrence': typeof ApiCronMaterializeRecurrenceRoute
@@ -130,6 +137,7 @@ export interface FileRoutesByTo {
   '/transactions': typeof AuthedTransactionsRoute
   '/api/mcp': typeof ApiMcpRoute
   '/api/transactions': typeof ApiTransactionsRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/': typeof AuthedIndexRoute
   '/faturas/$accountId': typeof AuthedFaturasAccountIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/_authed/transactions': typeof AuthedTransactionsRoute
   '/api/mcp': typeof ApiMcpRoute
   '/api/transactions': typeof ApiTransactionsRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/faturas_/$accountId': typeof AuthedFaturasAccountIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/api/mcp'
     | '/api/transactions'
+    | '/oauth/consent'
     | '/faturas/$accountId'
     | '/api/auth/$'
     | '/api/cron/materialize-recurrence'
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/api/mcp'
     | '/api/transactions'
+    | '/oauth/consent'
     | '/'
     | '/faturas/$accountId'
     | '/api/auth/$'
@@ -199,6 +210,7 @@ export interface FileRouteTypes {
     | '/_authed/transactions'
     | '/api/mcp'
     | '/api/transactions'
+    | '/oauth/consent'
     | '/_authed/'
     | '/_authed/faturas_/$accountId'
     | '/api/auth/$'
@@ -213,6 +225,7 @@ export interface RootRouteChildren {
   DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRoute
   ApiMcpRoute: typeof ApiMcpRoute
   ApiTransactionsRoute: typeof ApiTransactionsRoute
+  OauthConsentRoute: typeof OauthConsentRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronMaterializeRecurrenceRoute: typeof ApiCronMaterializeRecurrenceRoute
 }
@@ -246,6 +259,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthedIndexRouteImport
       parentRoute: typeof AuthedRoute
+    }
+    '/oauth/consent': {
+      id: '/oauth/consent'
+      path: '/oauth/consent'
+      fullPath: '/oauth/consent'
+      preLoaderRoute: typeof OauthConsentRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/transactions': {
       id: '/api/transactions'
@@ -358,6 +378,7 @@ const rootRouteChildren: RootRouteChildren = {
     DotwellKnownOauthProtectedResourceRoute,
   ApiMcpRoute: ApiMcpRoute,
   ApiTransactionsRoute: ApiTransactionsRoute,
+  OauthConsentRoute: OauthConsentRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronMaterializeRecurrenceRoute: ApiCronMaterializeRecurrenceRoute,
 }

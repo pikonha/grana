@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { accountInput, createTransactionInput, transferInput, updateAccountInput, updateTransactionInput } from './schemas'
+import { accountInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateTransactionInput, webhookTransactionInput } from './schemas'
 const base={type:'expend' as const,amount:1200,date:'2026-07-11'}
 describe('createTransactionInput',()=>{
   it('accepts plain transactions',()=>expect(createTransactionInput.safeParse(base).success).toBe(true))
@@ -20,4 +20,15 @@ describe('update schemas',()=>{
     expect(accountInput.parse({name:' Checking ',kind:'bank_account'}).name).toBe('Checking')
     expect(updateAccountInput.parse({id,name:' Visa ',kind:'credit_card',limit:1000,closingDay:5,dueDay:10}).name).toBe('Visa')
   })
+})
+describe('isoDate',()=>{
+  it('rejects impossible dates',()=>{
+    expect(createTransactionInput.safeParse({...base,date:'2026-13-01'}).success).toBe(false)
+    expect(faturaPaymentInput.safeParse({account_id:'11111111-1111-4111-8111-111111111111',cycle_key:'2026-02-30'}).success).toBe(false)
+  })
+  it('accepts leap days',()=>expect(createTransactionInput.safeParse({...base,date:'2028-02-29'}).success).toBe(true))
+})
+describe('webhookTransactionInput',()=>{
+  it('rejects unknown keys',()=>expect(webhookTransactionInput.safeParse({...base,card_id:'x'}).success).toBe(false))
+  it('accepts known keys',()=>expect(webhookTransactionInput.safeParse(base).success).toBe(true))
 })

@@ -64,6 +64,7 @@ function Accounts() {
   const [editClosingDay, setEditClosingDay] = useState("");
   const [editDueDay, setEditDueDay] = useState("");
   const [editPrepaid, setEditPrepaid] = useState(false);
+  const [editError, setEditError] = useState("");
   const { data = [] } = useQuery({
     queryKey: ["accounts"],
     queryFn: () => listAccounts(),
@@ -118,8 +119,10 @@ function Accounts() {
     setEditClosingDay("");
     setEditDueDay("");
     setEditPrepaid(false);
+    setEditError("");
   };
   const beginEdit = (account: Account) => {
+    setEditError("");
     setEditId(account.id);
     setEditName(account.name);
     setEditKind(account.kind);
@@ -388,7 +391,16 @@ function Accounts() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => remove.mutate(a.id)}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        a.kind === "credit_card"
+                          ? `Excluir "${a.name}"? Isso também apaga as compras parceladas deste cartão.`
+                          : `Excluir "${a.name}"?`,
+                      )
+                    )
+                      remove.mutate(a.id);
+                  }}
                 >
                   Excluir
                 </Button>
@@ -397,6 +409,17 @@ function Accounts() {
                     className="grid w-full gap-4 border-t-2 border-foreground pt-3 sm:grid-cols-3"
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (
+                        editKind === "credit_card" &&
+                        !editPrepaid &&
+                        (!editClosingDay || !editDueDay)
+                      ) {
+                        setEditError(
+                          "Informe o dia de fechamento e de vencimento.",
+                        );
+                        return;
+                      }
+                      setEditError("");
                       update.mutate(editedInput());
                     }}
                   >
@@ -465,7 +488,6 @@ function Accounts() {
                           max="28"
                           value={editClosingDay}
                           onChange={(e) => setEditClosingDay(e.target.value)}
-                          required
                         />
                       </div>
                     )}
@@ -478,7 +500,6 @@ function Accounts() {
                           max="28"
                           value={editDueDay}
                           onChange={(e) => setEditDueDay(e.target.value)}
-                          required
                         />
                       </div>
                     )}
@@ -497,9 +518,12 @@ function Accounts() {
                         Cancelar
                       </Button>
                     </div>
-                    {update.error && (
-                      <p className="text-sm text-destructive sm:col-span-3">
-                        {update.error.message}
+                    {(editError || update.error) && (
+                      <p
+                        role="alert"
+                        className="text-sm text-destructive sm:col-span-3"
+                      >
+                        {editError || update.error?.message}
                       </p>
                     )}
                   </form>

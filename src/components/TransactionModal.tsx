@@ -36,7 +36,7 @@ type RepeatInterval =
   | "yearly"
   | "installments";
 type CategoryOption = { id: string; name: string; color: string };
-type AccountOption = { id: string; name: string; kind: string };
+type AccountOption = { id: string; name: string; kind: string; prepaid?: boolean | null };
 type EditableTransaction = {
   id: string;
   type: "earn" | "expend";
@@ -87,7 +87,7 @@ export function TransactionModal({
   const isEditing = Boolean(initialTransaction);
   const selectedAccount = accounts.find((account) => account.id === accountId);
   const canInstall =
-    transactionType === "expend" && selectedAccount?.kind === "credit_card";
+    transactionType === "expend" && selectedAccount?.kind === "credit_card" && !selectedAccount.prepaid;
   useEffect(() => {
     if (repeat === "installments" && !canInstall) setRepeat("monthly");
   }, [canInstall, repeat]);

@@ -11,10 +11,15 @@ import {
   importTransactions,
   listTransactions,
 } from "#/server/transactions";
-import type { CreateTransactionInput, TransferInput } from "#/server/schemas";
+import type {
+  CreateTransactionInput,
+  ImportTransactionsInput,
+  TransferInput,
+} from "#/server/schemas";
 import type { Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
 import { balanceOf } from "#/lib/money";
+import { appToday } from "#/lib/dates";
 import {
   financeQueryKeys,
   newestTransactions,
@@ -153,7 +158,7 @@ function Dashboard() {
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
   });
   const importMutation = useMutation({
-    mutationFn: (data: Parameters<typeof importTransactions>[0]["data"]) => importTransactions({ data }),
+    mutationFn: (data: ImportTransactionsInput) => importTransactions({ data }),
     onSettled: () => Promise.all([
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.categories }),
@@ -222,7 +227,6 @@ function Dashboard() {
           <ImportCsvModal
             transactions={transactions}
             accounts={accounts}
-            categories={categories}
             onImport={(data) => importMutation.mutateAsync(data)}
             onCreateAccount={async (name) => (await createAccountMutation.mutateAsync(name)).id}
           />
@@ -276,7 +280,10 @@ function Dashboard() {
           <CardTitle>Transações recentes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {transactions.slice(0, 10).map((transaction) => (
+          {transactions
+            .filter((transaction) => transaction.date <= appToday())
+            .slice(0, 10)
+            .map((transaction) => (
             <div
               key={transaction.id}
               className="flex justify-between gap-3 border-b pb-3 last:border-0"

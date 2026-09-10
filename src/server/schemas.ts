@@ -3,6 +3,11 @@ import { DEFAULT_TAG_COLOR } from '#/lib/tag-colors'
 import { DEFAULT_TRANSFER_NOTE } from '#/lib/transaction-labels'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+  // The regex alone lets 2026-13-01 / 2026-02-30 through; round-trip to reject them.
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`)
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
+  }, 'date must be a real calendar date')
 const cents = z.number().int('amount must be integer cents')
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color must be #RRGGBB').transform((color) => color.toLowerCase())
 
@@ -14,6 +19,9 @@ export const transactionInput = z.object({
   note: z.string().max(500).optional(),
 })
 export type TransactionInput = z.infer<typeof transactionInput>
+
+/** The hermes webhook rejects unknown keys instead of silently dropping them (e.g. `card_id`). */
+export const webhookTransactionInput = transactionInput.strict()
 
 export const updateTransactionInput = transactionInput.extend({
   id: z.string().uuid(),
@@ -38,6 +46,7 @@ export const transferInput = z.object({
 export type TransferInput = z.infer<typeof transferInput>
 
 export const faturaPaymentInput = z.object({ account_id: z.string().uuid(), cycle_key: isoDate, paid_at: isoDate.optional() })
+export type FaturaPaymentInput = z.infer<typeof faturaPaymentInput>
 
 export const categoryInput = z.object({
   name: z.string().trim().min(1).max(100),

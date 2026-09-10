@@ -130,7 +130,7 @@ tanstackIntent:
 
 # Finances App — Project Notes
 
-Single-user personal finances app. External agent **hermes** POSTs transactions to a secured endpoint; full web UI for manual CRUD + balances. Built from `.omc/plans/finances-app.md`.
+Multi-user personal finances app (Better Auth). External agent **hermes** POSTs transactions to a secured endpoint; full web UI for manual CRUD + balances; an MCP server exposes the same operations to authenticated AI clients. Built from `.omc/plans/finances-app.md`.
 
 ## Scaffold command (exact)
 ```
@@ -147,11 +147,12 @@ TanStack Start (React 19, file-based routing) · TanStack Query/Table/Form · Dr
 - **Balance = `SUM` of rows** signed by type (`earn` +, `expend` −). No query-time derivation. See `balanceOf`.
 
 ## Data model (`src/db/schema.ts`)
-`category, card, recurrence_rule, installment_plan, transaction`. Every owned row carries `user_id = "default-user"` (multi-user ready, no logic yet). `transaction.installment_plan_id` → `onDelete: 'cascade'`. `UNIQUE(recurrence_rule_id, period_key)` for cron idempotency.
+`account, tag (aka category), recurrence_rule, installment_plan, transaction, transaction_tag, recurrence_rule_tag, fatura_payment`, plus Better Auth's own tables. Every owned row carries a real `user_id` scoped to the authenticated Better Auth user (multi-user, enforced via `requireUser()`/session in every server fn, tool, and route) — there is no `default-user` constant. `transaction.installment_plan_id` → `onDelete: 'cascade'`. `UNIQUE(recurrence_rule_id, period_key)` for cron idempotency.
 
 ## Endpoints
-- `POST /api/transactions` — hermes webhook + external writes. Bearer `HERMES_WEBHOOK_SECRET`, constant-time compare, checked **before** body parse (401). Zod-validated (400), `assertMoney`, returns `{id}` (201). **The UI does NOT call this route** — it uses same-origin server functions, so the secret never reaches the browser (deviation from plan, made for security). Shared insert logic lives in `createTransactionCore`.
+- `POST /api/transactions` — hermes webhook + external writes. Bearer `HERMES_WEBHOOK_SECRET`, constant-time compare, checked **before** body parse (401). Zod-validated with `.strict()` (400, rejects unknown keys like `card_id`), `assertMoney`, returns `{id}` (201). **The UI does NOT call this route** — it uses same-origin server functions, so the secret never reaches the browser (deviation from plan, made for security). Shared insert logic lives in `createTransactionCore`.
 - `POST /api/cron/materialize-recurrence` — Bearer `CRON_SECRET`. Materializes all due recurrence rules idempotently (catches up missed days), advances `next_run`.
+- `GET/POST /api/mcp` — Model Context Protocol server (streamable HTTP), OAuth-protected via Better Auth's `mcp` plugin. 14 tools, scoped per-user, no deletes. See README's MCP section for the tool list.
 
 ## Installments
 `createInstallmentPlan` generates N real `transaction` rows up front on a monthly schedule; last row absorbs the rounding remainder so `SUM(rows) === total` (asserted). Rows are **delete-only** (no edit) to preserve the invariant — to change a plan, delete and recreate.
@@ -161,7 +162,10 @@ daily `YYYY-MM-DD` · weekly `YYYY-MM-DD` (Monday) · monthly `YYYY-MM` · yearl
 
 ## Env vars
 - `DATABASE_URL` — Postgres connection string (Railway provides).
+- `BETTER_AUTH_SECRET` — Better Auth session/token signing secret (32+ random chars).
+- `BETTER_AUTH_URL` — public base URL the app is served from (used for auth callbacks and MCP OAuth).
 - `HERMES_WEBHOOK_SECRET` — bearer secret for the transactions webhook.
+- `HERMES_USER_ID` — Better Auth user ID that owns writes made through the webhook.
 - `CRON_SECRET` — bearer secret for the cron endpoint.
 
 ## Commands

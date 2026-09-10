@@ -28,6 +28,7 @@ export async function materializeDueRules(today: string) {
           type: rule.type,
           amount: rule.amount,
           date: next,
+          accountId: rule.accountId,
           recurrenceRuleId: rule.id,
           periodKey: periodKey(rule.interval, next),
           note: rule.note,

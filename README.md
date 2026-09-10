@@ -52,6 +52,12 @@ caches only versioned UI assets. Authenticated pages, API responses, and financi
 data are always network-only; offline navigation shows a privacy-safe fallback.
 Service-worker registration is intentionally disabled in development.
 
+## MCP
+
+`/api/mcp` exposes the app over the Model Context Protocol (streamable HTTP), OAuth-protected via Better Auth's `mcp` plugin — discovery at `/.well-known/oauth-authorization-server`. Every tool call resolves `userId` from the OAuth session and is scoped to that user's own data, same as the web UI.
+
+Tools: `list_accounts`, `create_account`, `update_account`, `list_tags`, `create_tag`, `list_transactions`, `create_transaction`, `update_transaction`, `create_transfer`, `list_installment_plans`, `list_recurrence_rules`, `list_faturas`, `mark_fatura_paid`, `unmark_fatura_paid`. No delete tools are exposed over MCP.
+
 ## Railway
 
 Set all six environment variables above; use the public app URL for `BETTER_AUTH_URL`. Apply the migration before deploying. The database migration is destructive versus the old single-user/card schema.

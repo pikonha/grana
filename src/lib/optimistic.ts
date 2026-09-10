@@ -51,6 +51,7 @@ export function optimisticTransaction(
 export function optimisticUpdatedTransaction(
   current: TransactionRow,
   input: UpdateTransactionInput,
+  allTags: Tag[] = current.tags,
 ): TransactionRow {
   return {
     ...current,
@@ -59,6 +60,9 @@ export function optimisticUpdatedTransaction(
     date: input.date,
     accountId: input.account_id ?? null,
     note: input.note ?? null,
+    tags: input.tag_ids
+      ? allTags.filter((tag) => input.tag_ids?.includes(tag.id))
+      : current.tags,
   };
 }
 

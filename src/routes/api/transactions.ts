@@ -3,7 +3,7 @@ import { json } from '@tanstack/react-start'
 import { z } from 'zod'
 import { checkBearer } from '#/server/auth'
 import { createTransactionCore } from '#/server/transactions.core'
-import { transactionInput } from '#/server/schemas'
+import { webhookTransactionInput } from '#/server/schemas'
 
 /**
  * The hermes webhook + any external write path. Auth is checked BEFORE the body
@@ -25,7 +25,7 @@ export const Route = createFileRoute('/api/transactions')({
         } catch {
           return json({ error: 'Invalid JSON' }, { status: 400 })
         }
-        const parsed = transactionInput.safeParse(body)
+        const parsed = webhookTransactionInput.safeParse(body)
         if (!parsed.success) {
           return json(
             { error: 'Validation failed', issues: z.treeifyError(parsed.error) },
@@ -37,9 +37,9 @@ export const Route = createFileRoute('/api/transactions')({
           return json(result, { status: 201 })
         } catch (e) {
           const err = e as Error & { cause?: unknown }
-          // assertMoney is the only expected client-fault throw here (400);
-          // anything else is a server/DB fault (500). Log the full cause.
-          if (err.message.startsWith('Invalid money amount')) {
+          // Bad money and unknown tag/account ids are client faults (400) — retrying
+          // them can never succeed. Anything else is a server/DB fault (500).
+          if (err.message.startsWith('Invalid money amount') || err.message.startsWith('One or more ')) {
             return json({ error: err.message }, { status: 400 })
           }
           console.error('[POST /api/transactions]', err.message, err.cause ?? '')

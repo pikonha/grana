@@ -5,12 +5,14 @@ import { withMcpAuth } from 'better-auth/plugins'
 import { asc, desc, eq } from 'drizzle-orm'
 import { auth } from '#/server/auth-config'
 import { db } from '#/db/index'
-import { account, faturaPayment, installmentPlan, recurrenceRule, tag, transaction } from '#/db/schema'
-import { assertMoney } from '#/lib/money'
+import { account, installmentPlan, recurrenceRule, tag, transaction } from '#/db/schema'
+import { appToday } from '#/lib/dates'
 import { tagColorForIndex } from '#/lib/tag-colors'
-import { accountInput, categoryInput, createTransactionInput, faturaPaymentInput, transferInput } from '#/server/schemas'
-import { assertOwnedAccounts, createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore } from '#/server/transactions.core'
-import { listFaturasCore } from '#/server/faturas.core'
+import { accountInput, categoryInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateTransactionInput } from '#/server/schemas'
+import { createAccountCore, updateAccountCore } from '#/server/accounts'
+import { tagsByRule, tagsByTransaction } from '#/server/tags.core'
+import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateTransactionCore } from '#/server/transactions.core'
+import { listFaturasCore, markFaturaPaidCore, unmarkFaturaPaidCore } from '#/server/faturas.core'
 
 /**
  * Multi-tenant MCP server: same-origin, no delete tools. Every tool resolves
@@ -28,20 +30,16 @@ function buildServer(userId: string) {
   })
 
   server.registerTool('create_account', { description: 'Create a bank account or credit card', inputSchema: accountInput }, async (data) => {
-    if (data.limit !== undefined) assertMoney(data.limit)
-    const isCreditCard = data.kind === 'credit_card'
-    const prepaid = isCreditCard && (data.prepaid ?? false)
-    const [row] = await db.insert(account).values({
-      userId, name: data.name, kind: data.kind,
-      limit: isCreditCard && !prepaid ? data.limit ?? null : null,
-      closingDay: isCreditCard && !prepaid ? data.closingDay ?? null : null,
-      dueDay: isCreditCard && !prepaid ? data.dueDay ?? null : null,
-      prepaid,
-    }).returning({ id: account.id })
-    return text({ id: row.id })
+    return text(await createAccountCore(userId, data))
+  })
+
+  server.registerTool('update_account', { description: 'Update one of the authenticated user\'s accounts', inputSchema: updateAccountInput }, async (data) => {
+    return text(await updateAccountCore(userId, data))
   })
 
   server.registerTool('list_tags', { description: 'List the colored tags owned by the authenticated user (seeds defaults on first use)' }, async () => {
+    // ponytail: mirrors listCategories() in src/server/categories.ts; that copy is a
+    // createServerFn wrapper around requireUser(), so it can't be called with an MCP userId.
     const query = () => db.select().from(tag).where(eq(tag.userId, userId)).orderBy(asc(tag.name))
     const rows = await query()
     if (rows.length) return text(rows)
@@ -55,9 +53,10 @@ function buildServer(userId: string) {
     return text({ id: row.id })
   })
 
-  server.registerTool('list_transactions', { description: 'List the transactions owned by the authenticated user' }, async () => {
+  server.registerTool('list_transactions', { description: 'List the transactions owned by the authenticated user, each with its tags' }, async () => {
     const rows = await db.select().from(transaction).where(eq(transaction.userId, userId)).orderBy(desc(transaction.date), desc(transaction.createdAt))
-    return text(rows)
+    const groupedTags = await tagsByTransaction(rows.map((row) => row.id))
+    return text(rows.map((row) => ({ ...row, tags: groupedTags.get(row.id) ?? [] })))
   })
 
   server.registerTool('create_transaction', {
@@ -69,6 +68,10 @@ function buildServer(userId: string) {
     return text(await createTransactionCore(userId, data))
   })
 
+  server.registerTool('update_transaction', { description: 'Update a transaction (installment rows cannot be edited)', inputSchema: updateTransactionInput }, async (data) => {
+    return text(await updateTransactionCore(userId, data))
+  })
+
   server.registerTool('create_transfer', { description: 'Create a transfer between two of the user\'s own accounts', inputSchema: transferInput }, async (data) => {
     return text(await createTransferCore(userId, data))
   })
@@ -78,21 +81,22 @@ function buildServer(userId: string) {
     return text(rows)
   })
 
-  server.registerTool('list_recurrence_rules', { description: 'List the recurrence rules owned by the authenticated user' }, async () => {
+  server.registerTool('list_recurrence_rules', { description: 'List the recurrence rules owned by the authenticated user, each with its tags' }, async () => {
     const rows = await db.select().from(recurrenceRule).where(eq(recurrenceRule.userId, userId)).orderBy(asc(recurrenceRule.nextRun))
-    return text(rows)
+    const groupedTags = await tagsByRule(rows.map((row) => row.id))
+    return text(rows.map((row) => ({ ...row, tags: groupedTags.get(row.id) ?? [] })))
   })
 
   server.registerTool('list_faturas', { description: 'List the computed credit-card fatura (billing cycle) rows for the authenticated user' }, async () => {
-    return text(await listFaturasCore(userId, new Date().toISOString().slice(0, 10)))
+    return text(await listFaturasCore(userId, appToday()))
   })
 
   server.registerTool('mark_fatura_paid', { description: 'Mark a fatura cycle as paid', inputSchema: faturaPaymentInput }, async (data) => {
-    await assertOwnedAccounts(userId, [data.account_id])
-    await db.insert(faturaPayment).values({
-      userId, accountId: data.account_id, cycleKey: data.cycle_key, paidAt: data.paid_at ?? new Date().toISOString().slice(0, 10),
-    }).onConflictDoNothing()
-    return text({ success: true })
+    return text(await markFaturaPaidCore(userId, data))
+  })
+
+  server.registerTool('unmark_fatura_paid', { description: 'Undo marking a fatura cycle as paid', inputSchema: faturaPaymentInput }, async (data) => {
+    return text(await unmarkFaturaPaidCore(userId, data))
   })
 
   return server

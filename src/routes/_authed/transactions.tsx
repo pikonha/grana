@@ -220,7 +220,7 @@ function Transactions() {
           newestTransactions(
             current.map((transaction) =>
               transaction.id === data.id
-                ? optimisticUpdatedTransaction(transaction, data)
+                ? optimisticUpdatedTransaction(transaction, data, categories)
                 : transaction,
             ),
           ),
@@ -390,7 +390,14 @@ function Transactions() {
       installmentLabel: null,
       isRecurring: true,
       pending: removeRule.isPending,
-      onDelete: () => removeRule.mutate(rule.id),
+      onDelete: () => {
+        if (
+          window.confirm(
+            "Excluir esta recorrência? Isso apaga todo o histórico gerado por ela.",
+          )
+        )
+          removeRule.mutate(rule.id);
+      },
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -678,7 +685,7 @@ function Transactions() {
                               type={row.tx.type}
                               accounts={accounts}
                               categories={categories}
-                              initialTransaction={row.tx}
+                              initialTransaction={{ ...row.tx, type: row.tx.type }}
                               onUpdate={(data) => update.mutateAsync(data)}
                               onCreateCategory={async (name, color) =>
                                 (
