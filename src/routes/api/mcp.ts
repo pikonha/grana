@@ -9,7 +9,7 @@ import { account, installmentPlan, recurrenceRule, tag, transaction } from '#/db
 import { appToday } from '#/lib/dates'
 import { tagColorForIndex } from '#/lib/tag-colors'
 import { accountInput, categoryInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateTransactionInput } from '#/server/schemas'
-import { createAccountCore, updateAccountCore } from '#/server/accounts'
+import { createAccountCore, updateAccountCore } from '#/server/accounts.core'
 import { tagsByRule, tagsByTransaction } from '#/server/tags.core'
 import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateTransactionCore } from '#/server/transactions.core'
 import { listFaturasCore, markFaturaPaidCore, unmarkFaturaPaidCore } from '#/server/faturas.core'
