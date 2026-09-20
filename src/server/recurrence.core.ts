@@ -1,4 +1,4 @@
-import { eq, lte } from 'drizzle-orm'
+import { and, eq, lte } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { recurrenceRule, recurrenceRuleTag, transaction, transactionTag } from '#/db/schema'
 import { advance, periodKey } from '#/lib/recurrence'
@@ -10,11 +10,11 @@ import { advance, periodKey } from '#/lib/recurrence'
  *
  * Server-only module (see transactions.core.ts) — keeps db/pg out of the client.
  */
-export async function materializeDueRules(today: string) {
+export async function materializeDueRules(today: string, userId?: string) {
   const due = await db
     .select()
     .from(recurrenceRule)
-    .where(lte(recurrenceRule.nextRun, today))
+    .where(userId ? and(lte(recurrenceRule.nextRun, today), eq(recurrenceRule.userId, userId)) : lte(recurrenceRule.nextRun, today))
 
   let inserted = 0
   for (const rule of due) {

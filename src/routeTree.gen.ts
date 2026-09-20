@@ -22,7 +22,6 @@ import { Route as AuthedFaturasRouteImport } from './routes/_authed/faturas'
 import { Route as AuthedAccountsRouteImport } from './routes/_authed/accounts'
 import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known.oauth-protected-resource'
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known.oauth-authorization-server'
-import { Route as ApiCronMaterializeRecurrenceRouteImport } from './routes/api/cron.materialize-recurrence'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as AuthedFaturasAccountIdRouteImport } from './routes/_authed/faturas_.$accountId'
 
@@ -92,12 +91,6 @@ const DotwellKnownOauthAuthorizationServerRoute =
     path: '/.well-known/oauth-authorization-server',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiCronMaterializeRecurrenceRoute =
-  ApiCronMaterializeRecurrenceRouteImport.update({
-    id: '/api/cron/materialize-recurrence',
-    path: '/api/cron/materialize-recurrence',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -124,7 +117,6 @@ export interface FileRoutesByFullPath {
   '/oauth/consent': typeof OauthConsentRoute
   '/faturas/$accountId': typeof AuthedFaturasAccountIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/cron/materialize-recurrence': typeof ApiCronMaterializeRecurrenceRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -141,7 +133,6 @@ export interface FileRoutesByTo {
   '/': typeof AuthedIndexRoute
   '/faturas/$accountId': typeof AuthedFaturasAccountIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/cron/materialize-recurrence': typeof ApiCronMaterializeRecurrenceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -160,7 +151,6 @@ export interface FileRoutesById {
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/faturas_/$accountId': typeof AuthedFaturasAccountIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/cron/materialize-recurrence': typeof ApiCronMaterializeRecurrenceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -179,7 +169,6 @@ export interface FileRouteTypes {
     | '/oauth/consent'
     | '/faturas/$accountId'
     | '/api/auth/$'
-    | '/api/cron/materialize-recurrence'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -196,7 +185,6 @@ export interface FileRouteTypes {
     | '/'
     | '/faturas/$accountId'
     | '/api/auth/$'
-    | '/api/cron/materialize-recurrence'
   id:
     | '__root__'
     | '/_authed'
@@ -214,7 +202,6 @@ export interface FileRouteTypes {
     | '/_authed/'
     | '/_authed/faturas_/$accountId'
     | '/api/auth/$'
-    | '/api/cron/materialize-recurrence'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -227,7 +214,6 @@ export interface RootRouteChildren {
   ApiTransactionsRoute: typeof ApiTransactionsRoute
   OauthConsentRoute: typeof OauthConsentRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  ApiCronMaterializeRecurrenceRoute: typeof ApiCronMaterializeRecurrenceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -323,13 +309,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/cron/materialize-recurrence': {
-      id: '/api/cron/materialize-recurrence'
-      path: '/api/cron/materialize-recurrence'
-      fullPath: '/api/cron/materialize-recurrence'
-      preLoaderRoute: typeof ApiCronMaterializeRecurrenceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -380,7 +359,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTransactionsRoute: ApiTransactionsRoute,
   OauthConsentRoute: OauthConsentRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
-  ApiCronMaterializeRecurrenceRoute: ApiCronMaterializeRecurrenceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

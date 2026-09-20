@@ -29,7 +29,6 @@ BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
 BETTER_AUTH_URL=http://localhost:3000
 HERMES_WEBHOOK_SECRET=...
 HERMES_USER_ID=better-auth-user-id-owned-by-hermes-writes
-CRON_SECRET=...
 ```
 
 `HERMES_USER_ID` is the Better Auth user ID assigned to external transaction writes. The webhook contract uses `account_id` and optional `tag_ids`; legacy `category_id` is still accepted as one tag. `card_id` is no longer accepted.
@@ -60,13 +59,6 @@ Tools: `list_accounts`, `create_account`, `update_account`, `list_tags`, `create
 
 ## Railway
 
-Set all six environment variables above; use the public app URL for `BETTER_AUTH_URL`. Apply the migration before deploying. The database migration is destructive versus the old single-user/card schema.
+Set all five environment variables above; use the public app URL for `BETTER_AUTH_URL`. Apply the migration before deploying. The database migration is destructive versus the old single-user/card schema.
 
-The daily cron remains:
-
-```text
-0 0 * * *
-sh -c "curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" \"$APP_URL/api/cron/materialize-recurrence\""
-```
-
-The cron materializes rules for every user and remains idempotent. Installments are allowed only for expense transactions on an owned credit-card account. Tags are colored rows attached through `transaction_tag`, so one transaction can carry multiple labels.
+No cron job is needed: recurrence rules are materialized lazily on `list_transactions` (idempotent, catches up missed days). Installments are allowed only for expense transactions on an owned credit-card account. Tags are colored rows attached through `transaction_tag`, so one transaction can carry multiple labels.

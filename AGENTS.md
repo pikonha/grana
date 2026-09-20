@@ -151,7 +151,6 @@ TanStack Start (React 19, file-based routing) · TanStack Query/Table/Form · Dr
 
 ## Endpoints
 - `POST /api/transactions` — hermes webhook + external writes. Bearer `HERMES_WEBHOOK_SECRET`, constant-time compare, checked **before** body parse (401). Zod-validated with `.strict()` (400, rejects unknown keys like `card_id`), `assertMoney`, returns `{id}` (201). **The UI does NOT call this route** — it uses same-origin server functions, so the secret never reaches the browser (deviation from plan, made for security). Shared insert logic lives in `createTransactionCore`.
-- `POST /api/cron/materialize-recurrence` — Bearer `CRON_SECRET`. Materializes all due recurrence rules idempotently (catches up missed days), advances `next_run`.
 - `GET/POST /api/mcp` — Model Context Protocol server (streamable HTTP), OAuth-protected via Better Auth's `mcp` plugin. 14 tools, scoped per-user, no deletes. See README's MCP section for the tool list.
 
 ## Installments
@@ -166,7 +165,6 @@ daily `YYYY-MM-DD` · weekly `YYYY-MM-DD` (Monday) · monthly `YYYY-MM` · yearl
 - `BETTER_AUTH_URL` — public base URL the app is served from (used for auth callbacks and MCP OAuth).
 - `HERMES_WEBHOOK_SECRET` — bearer secret for the transactions webhook.
 - `HERMES_USER_ID` — Better Auth user ID that owns writes made through the webhook.
-- `CRON_SECRET` — bearer secret for the cron endpoint.
 
 ## Commands
 - `pnpm dev` · `pnpm build` · `pnpm start` (`node .output/server/index.mjs`)
@@ -174,20 +172,13 @@ daily `YYYY-MM-DD` · weekly `YYYY-MM-DD` (Monday) · monthly `YYYY-MM` · yearl
 - `pnpm db:generate` / `pnpm db:migrate` (drizzle-kit). Migration `drizzle/0000_*.sql` is generated.
 
 ## Deploy (Railway)
-Web service (env: the three above) + Postgres + a scheduled job (daily 00:00 UTC) that does
-`curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" $APP_URL/api/cron/materialize-recurrence`.
-Run migrations against the provisioned DB (`pnpm db:migrate`) before/at first deploy.
+Web service + Postgres. Run migrations against the provisioned DB (`pnpm db:migrate`) before/at first deploy. No cron service: `listTransactions` calls `materializeDueRules` on every read (idempotent, catches up missed days).
 
 ## Deploy status (live)
 - Project `finances` (workspace "lucas picollo's Projects"), env `production`. App URL: https://api-production-0617.up.railway.app
-- Services: `api` (web), `Postgres`, `cron` (curl image). DB migration applied (5 tables). Secrets set on `api`.
-- Verified live: SSR 200, webhook 401/400/201, cron 401 + idempotent materialization.
+- Services: `api` (web), `Postgres`. DB migration applied (5 tables). Secrets set on `api`.
+- Verified live: SSR 200, webhook 401/400/201.
 
-## Cron schedule — MANUAL step still needed
-The `cron` service has `CRON_SECRET` + `APP_URL` vars but the schedule/command must be set in the Railway dashboard (CLI v5.23.1 `environment edit --service-config` no-ops non-interactively). In `cron` → Settings:
-- **Cron Schedule**: `0 0 * * *`
-- **Custom Start Command**: `sh -c "curl -fsS -X POST -H \"Authorization: Bearer $CRON_SECRET\" \"$APP_URL/api/cron/materialize-recurrence\""`
-- Restart policy: Never.
 
 ## Gotchas
 - **nitro pin**: scaffold pinned `nitro-nightly@4.0.0-20251010` (incompatible with vite 8; ships the dev SSR renderer into the prod `node-server` bundle → every request 500s with `EADDRNOTAVAIL` self-fetch). Repinned to `nitro-nightly@3.0.1-20260619`. Always run `node .output/server/index.mjs` locally before deploying.
