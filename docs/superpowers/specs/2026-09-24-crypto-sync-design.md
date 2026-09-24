@@ -108,3 +108,22 @@ Unchanged: hermes webhook, MCP tools, CSV import, reports.
 ## Out of scope (v1)
 
 ETH and other non-stable tokens · current market value on the account card · merchant names from the ether.fi API · Open Finance · cron.
+
+## Implementation notes (2026-09-24)
+
+What task 1 found, and where the build departs from the design above:
+
+- **Data source: Blockscout, not Etherscan.** Etherscan V2's free tier answers "Free API access is not supported for this chain" for Base and OP. The build uses Blockscout's Etherscan-compatible API (`api.blockscout.com/v2/api?chain_id=…`, free PRO key, 5 req/s) with env `BLOCKSCOUT_API_KEY` in place of `ETHERSCAN_API_KEY`. Without a key it falls back to the keyless public explorers, which allow about 10 requests per window (dev only).
+- **Transfers come from `getLogs`, not `tokentx`.** `tokentx` has no `logIndex` on either provider. Each allowlisted token gets one `Transfer` log query per direction (Blockscout ignores the topic OR operator).
+- **Verified contract facts:**
+  - `CashEventEmitter` on OP is `0x380b2e96799405be6e3d965f4044099891881acb` (from `etherfi-protocol/cash-v3`, `deployments/mainnet/10`).
+  - `Spend` topic0 is `0x244f4cc0…90fc`, checked against a live log.
+  - `totalUsdAmt` is 6-decimal (`PriceProvider.DECIMALS`).
+  - The safe address is the same on every chain (Create3), so no `deposit_address` is needed.
+  - The stablecoins are USDC and USDT, on Base and on OP.
+- **The ether.fi Base leg is not fetched.** ether.fi bridges every Base deposit to the OP safe, and the funds arrive from `TopUpDest`. Counting the Base leg as well would record a single external deposit twice. For the ether.fi account, sync reads only OP incoming transfers and `Spend` logs. Incoming transfers from a sibling crypto account are skipped as top-ups.
+- **Throttle, lock and retry:** before syncing, `last_synced_at` is claimed atomically. After a failure, the retry therefore waits for the next 15-min slot instead of firing on every 2 s poll. The button retries right away.
+- **`listTransactions` does not await the sync.** Synced rows appear on the next poll.
+- **Unique key:** `UNIQUE(user_id, external_id)`, so two users can track the same address.
+- **Changing a crypto config restarts the backfill.** Editing the address, kind or since date resets `sync_cursor`.
+- **Keeping the config on partial updates:** when `walletAddress` is omitted (for example, an MCP `update_account` rename), the sync config is kept. `null` turns sync off.

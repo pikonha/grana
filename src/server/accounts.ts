@@ -5,6 +5,7 @@ import { account } from '#/db/schema'
 import { accountInput, updateAccountInput } from './schemas'
 import { createAccountCore, updateAccountCore } from './accounts.core'
 import { requireUser } from './session.core'
+import { syncAccountNowCore } from './chain-sync.core'
 
 export const listAccounts = createServerFn({ method: 'GET' }).handler(async () => {
   const userId = await requireUser()
@@ -26,3 +27,7 @@ export const deleteAccount = createServerFn({ method: 'POST' })
     await db.delete(account).where(and(eq(account.id, id), eq(account.userId, userId)))
     return { success: true }
   })
+
+export const syncAccountNow = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => String((data as { id: string }).id))
+  .handler(async ({ data: id }) => syncAccountNowCore(await requireUser(), id))
