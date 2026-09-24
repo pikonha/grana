@@ -140,6 +140,16 @@ describe('planSync — ether.fi Cash', () => {
     expect(plan.inserts).toEqual([])
   })
 
+  it('labels ether.fi refunds and cashback', () => {
+    const plan = planSync(etherfi({
+      transfers: [
+        transfer({ chainId: 10, hash: '0xr', from: '0xf6b3422e3cc70fa9fce4fab9a706ed2497c7bb9e', to: ETHERFI, contractAddress: USDC_OP }),
+        transfer({ chainId: 10, hash: '0xc', from: '0xef55ec694b0b8273967f28627c5bc26f5deea836', to: ETHERFI, contractAddress: USDC_OP, value: '1000000' }),
+      ],
+    }))
+    expect(plan.inserts.map((r) => r.note)).toEqual(['ether.fi Cash (reembolso)', 'ether.fi Cash (cashback)'])
+  })
+
   it('imports other incoming transfers (refunds) as earns', () => {
     const plan = planSync(etherfi({
       transfers: [transfer({ chainId: 10, from: OTHER, to: ETHERFI, contractAddress: USDC_OP, value: '5000000' })],

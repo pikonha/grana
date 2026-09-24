@@ -130,6 +130,12 @@ What task 1 found, and where the build departs from the design above:
 - **PTAX fallback also covers today:** a transaction made before the ~13h bulletin gets the previous day's rate, and keeps it.
 - **ether.fi Lend (`LendGateway`, OP) is internal.** Deposits to and withdrawals from Lend are ignored both ways, so lent money still counts as card balance. Yield is not imported.
 - **Live run (2026-09-24):** tested against a public ether.fi safe on OP from 2026-09-20. 12 rows (spends, cashback, top-ups), cursor saved, about 5 s. That run exposed the Lend in/out pairs, which led to the rule above.
+- **Live run with a PRO key (2026-09-24):**
+  - ether.fi safe on OP: 12 rows, about 6 s.
+  - Quiet Base wallet: 20 rows, about 20 s. The slow part is Blockscout scanning USDT transfers for an address that has none (about 10 s). Timeout raised to 30 s.
+  - Running the sync a second time adds no rows on either account.
+- **Refund and cashback labels:** incoming from ether.fi's `refundWallet` or `CashbackDispatcher` gets the note "ether.fi Cash (reembolso)" or "ether.fi Cash (cashback)".
+- **Page cap:** at most 40 pages (about 2000 transfers per token) per run. A bot-busy address fails with an error instead of hanging.
 - **MCP:** the MCP tools' code is unchanged, but `create_account`/`update_account` take `accountInput`, so they accept the new optional sync fields.
 - **Throttle, lock and retry:** before syncing, `last_synced_at` is claimed atomically. After a failure, the retry therefore waits for the next 15-min slot instead of firing on every 2 s poll. The button retries right away.
 - **`listTransactions` does not await the sync.** Synced rows appear on the next poll.

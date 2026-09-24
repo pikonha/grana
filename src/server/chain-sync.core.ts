@@ -34,7 +34,7 @@ async function getJson(chainId: number, what: string, url: string) {
   let res: Response | undefined
   for (let attempt = 0; attempt < 2; attempt++) {
     await sleep(attempt ? 2_000 : 250)
-    res = await fetch(url, { signal: AbortSignal.timeout(20_000) })
+    res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
     if (res.status !== 429) break
   }
   if (!res?.ok) throw new Error(`explorer ${chainId} ${what}: HTTP ${res?.status}`)
@@ -81,7 +81,10 @@ async function getLogs(chainId: number, fromBlock: number, toBlock: number, filt
 async function tokenTransfers(chainId: number, address: string, token: string, fromBlock: number, toBlock: number) {
   const out: TokenTransfer[] = []
   let next: Record<string, string> = {}
-  for (;;) {
+  // ponytail: page cap (≈2000 transfers per token per run) so a bot-busy address fails loudly
+  // instead of hanging; a personal wallet never gets near it. Raise it, or sync in slices, if needed.
+  for (let pages = 0; ; pages++) {
+    if (pages === 40) throw new Error(`explorer ${chainId}: over 40 pages of ${token} transfers; choose a later sync start date`)
     const page = await rest(chainId, `/addresses/${address}/token-transfers`, { type: 'ERC-20', token, ...next }) as { items?: TransferItem[]; next_page_params?: Record<string, string | number> | null }
     if (!Array.isArray(page.items)) throw new Error(`explorer ${chainId}: malformed token-transfers response`)
     for (const item of page.items) {

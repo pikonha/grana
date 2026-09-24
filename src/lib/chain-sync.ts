@@ -59,6 +59,14 @@ export const INTERNAL_COUNTERPARTIES: Record<number, string[]> = {
   10: ['0x01f8cdfb1694ea8fe4ed6c38a0fd78d1188e03f4'],
 }
 
+/** Notes for earns from known ether.fi senders (OP), so refunds and cashback are recognizable. */
+export const SENDER_NOTES: Record<number, Record<string, string>> = {
+  10: {
+    '0xf6b3422e3cc70fa9fce4fab9a706ed2497c7bb9e': 'ether.fi Cash (reembolso)',
+    '0xef55ec694b0b8273967f28627c5bc26f5deea836': 'ether.fi Cash (cashback)',
+  },
+}
+
 export const externalIdOf = (e: LogMeta) => `${e.chainId}:${e.hash}:${e.logIndex}`
 
 /** An Etherscan/Blockscout `getLogs` result entry (numbers hex-encoded). */
@@ -146,7 +154,7 @@ export function planSync(input: PlanInput): SyncPlan {
       // A sibling syncing this chain records the move as its own outgoing transfer.
       const sender = siblings.get(from)
       if (sender && CHAINS[sender.syncKind].includes(t.chainId)) continue
-      const earn = row(t, 'earn', usd)
+      const earn = row(t, 'earn', usd, { note: SENDER_NOTES[t.chainId]?.[from] ?? null })
       if (!takeTopUp(earn, topUps)) rows.push(earn)
     } else if (from === me) {
       // Settlement leg of a Spend: counted once, via the Spend log.
