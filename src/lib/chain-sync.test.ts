@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSpendLog, parseTransferLog, planSync, usdCentsOf, type PlanInput } from './chain-sync'
+import { parseSpendLog, parseTransferItem, planSync, usdCentsOf, type PlanInput } from './chain-sync'
 
 const SAFE = '0x1111111111111111111111111111111111111111'
 const ETHERFI = '0x2222222222222222222222222222222222222222'
@@ -129,6 +129,17 @@ describe('planSync — ether.fi Cash', () => {
     expect(plan.inserts).toMatchObject([{ type: 'earn', externalId: '10:0xe2:3' }])
   })
 
+  it('ignores moves to and from ether.fi Lend (the money is still on the card)', () => {
+    const LEND = '0x01f8cdfb1694ea8fe4ed6c38a0fd78d1188e03f4'
+    const plan = planSync(etherfi({
+      transfers: [
+        transfer({ chainId: 10, hash: '0xl1', from: ETHERFI, to: LEND, contractAddress: USDC_OP }),
+        transfer({ chainId: 10, hash: '0xl2', from: LEND, to: ETHERFI, contractAddress: USDC_OP }),
+      ],
+    }))
+    expect(plan.inserts).toEqual([])
+  })
+
   it('imports other incoming transfers (refunds) as earns', () => {
     const plan = planSync(etherfi({
       transfers: [transfer({ chainId: 10, from: OTHER, to: ETHERFI, contractAddress: USDC_OP, value: '5000000' })],
@@ -214,16 +225,12 @@ describe('log parsing', () => {
     expect(usdCentsOf(spend.totalUsdAmt)).toBe(69448)
   })
 
-  it('decodes an ERC20 Transfer log', () => {
-    const t = parseTransferLog(8453, USDC_BASE, {
-      blockNumber: '0x10', timeStamp: '0x20', logIndex: '0x3', transactionHash: '0xabc',
-      topics: [
-        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
-        '0x0000000000000000000000001111111111111111111111111111111111111111',
-        '0x0000000000000000000000002222222222222222222222222222222222222222',
-      ],
-      data: '0x0000000000000000000000000000000000000000000000000000000005f5e100',
+  it('decodes a Blockscout token-transfers item', () => {
+    const t = parseTransferItem(10, USDC_OP, {
+      block_number: 156847410, log_index: 31, timestamp: '2026-09-22T15:00:00.000000Z', transaction_hash: '0xabc',
+      from: { hash: '0x2222222222222222222222222222222222222222' }, to: { hash: '0x1111111111111111111111111111111111111111' },
+      total: { value: '1000000000' },
     })
-    expect(t).toEqual({ chainId: 8453, hash: '0xabc', logIndex: 3, blockNumber: 16, timeStamp: 32, from: SAFE, to: ETHERFI, contractAddress: USDC_BASE, value: '100000000' })
+    expect(t).toEqual({ chainId: 10, hash: '0xabc', logIndex: 31, blockNumber: 156847410, timeStamp: TUE_NOON, from: ETHERFI, to: SAFE, contractAddress: USDC_OP, value: '1000000000' })
   })
 })

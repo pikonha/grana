@@ -114,7 +114,7 @@ ETH and other non-stable tokens · current market value on the account card · m
 What task 1 found, and where the build departs from the design above:
 
 - **Data source: Blockscout, not Etherscan.** Etherscan V2's free tier answers "Free API access is not supported for this chain" for Base and OP. The build uses Blockscout's Etherscan-compatible API (`api.blockscout.com/v2/api?chain_id=…`, free PRO key, 5 req/s) with env `BLOCKSCOUT_API_KEY` in place of `ETHERSCAN_API_KEY`. Without a key it falls back to the keyless public explorers, which allow about 10 requests per window (dev only).
-- **Transfers come from `getLogs`, not `tokentx`.** `tokentx` has no `logIndex` on either provider. Each allowlisted token gets one `Transfer` log query per direction (Blockscout ignores the topic OR operator).
+- **Transfers come from Blockscout's REST `token-transfers`, not `tokentx`.** `tokentx` has no `logIndex`, and `getLogs` filtered by topic on the USDC contract takes about 40 s on Base. The REST endpoint is indexed by address, returns `log_index`, and answers in about 1 s. There is one call per token per chain, paged from newest to oldest down to the cursor. `Spend` logs still come from `getLogs` on the emitter (0.3 s).
 - **Verified contract facts:**
   - `CashEventEmitter` on OP is `0x380b2e96799405be6e3d965f4044099891881acb` (from `etherfi-protocol/cash-v3`, `deployments/mainnet/10`).
   - `Spend` topic0 is `0x244f4cc0…90fc`, checked against a live log.
@@ -128,6 +128,8 @@ What task 1 found, and where the build departs from the design above:
 - **Re-reads are idempotent:** events whose `external_id` already exists are dropped before matching. A re-read therefore never claims a second row.
 - **Margin behind the head:** `sync_cursor` stops 150 blocks (~5 min) behind the head, to give the indexer time to catch up.
 - **PTAX fallback also covers today:** a transaction made before the ~13h bulletin gets the previous day's rate, and keeps it.
+- **ether.fi Lend (`LendGateway`, OP) is internal.** Deposits to and withdrawals from Lend are ignored both ways, so lent money still counts as card balance. Yield is not imported.
+- **Live run (2026-09-24):** tested against a public ether.fi safe on OP from 2026-09-20. 12 rows (spends, cashback, top-ups), cursor saved, about 5 s. That run exposed the Lend in/out pairs, which led to the rule above.
 - **MCP:** the MCP tools' code is unchanged, but `create_account`/`update_account` take `accountInput`, so they accept the new optional sync fields.
 - **Throttle, lock and retry:** before syncing, `last_synced_at` is claimed atomically. After a failure, the retry therefore waits for the next 15-min slot instead of firing on every 2 s poll. The button retries right away.
 - **`listTransactions` does not await the sync.** Synced rows appear on the next poll.

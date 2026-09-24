@@ -51,6 +51,14 @@ export const STABLECOINS: Record<number, string[]> = {
   10: ['0x0b2c639c533813f4aa9d7837caf62653d097ff85', '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58'],
 }
 
+/**
+ * Counterparties whose moves are internal to the account, ignored both ways: ether.fi
+ * Lend (OP) — lent funds still count as card balance. ponytail: yield is not imported.
+ */
+export const INTERNAL_COUNTERPARTIES: Record<number, string[]> = {
+  10: ['0x01f8cdfb1694ea8fe4ed6c38a0fd78d1188e03f4'],
+}
+
 export const externalIdOf = (e: LogMeta) => `${e.chainId}:${e.hash}:${e.logIndex}`
 
 /** An Etherscan/Blockscout `getLogs` result entry (numbers hex-encoded). */
@@ -61,9 +69,17 @@ const logMeta = (chainId: number, log: RawLog): LogMeta => ({
   chainId, hash: log.transactionHash, logIndex: Number(log.logIndex), blockNumber: Number(log.blockNumber), timeStamp: Number(log.timeStamp),
 })
 
-/** ERC20 `Transfer(address indexed from, address indexed to, uint256 value)` of `token`. */
-export const parseTransferLog = (chainId: number, token: string, log: RawLog): TokenTransfer => ({
-  ...logMeta(chainId, log), from: addressOf(log.topics[1]), to: addressOf(log.topics[2]), contractAddress: token, value: BigInt(log.data).toString(),
+/** A Blockscout REST v2 `token-transfers` item (only the fields used). */
+export type TransferItem = {
+  block_number: number; log_index: number; timestamp: string; transaction_hash: string
+  from: { hash: string }; to: { hash: string }; total: { value: string }
+}
+
+/** One ERC20 transfer of `token` (the query filter; the item's token field varies by Blockscout version). */
+export const parseTransferItem = (chainId: number, token: string, item: TransferItem): TokenTransfer => ({
+  chainId, hash: item.transaction_hash, logIndex: item.log_index, blockNumber: item.block_number,
+  timeStamp: Date.parse(item.timestamp) / 1000,
+  from: item.from.hash.toLowerCase(), to: item.to.hash.toLowerCase(), contractAddress: token.toLowerCase(), value: BigInt(item.total.value).toString(),
 })
 
 /** ether.fi `Spend(address indexed safe, …)`; data words: tokens, amounts, amountInUsd offsets, then totalUsdAmt, mode. */
@@ -125,7 +141,7 @@ export function planSync(input: PlanInput): SyncPlan {
   const rows: SyncRow[] = []
   for (const t of input.transfers.filter((t) => isStablecoin(t) && inWindow(t))) {
     const usd = usdCentsOf(t.value), from = t.from.toLowerCase(), to = t.to.toLowerCase()
-    if (from === to || usd === 0) continue
+    if (from === to || usd === 0 || INTERNAL_COUNTERPARTIES[t.chainId]?.some((c) => c === from || c === to)) continue
     if (to === me) {
       // A sibling syncing this chain records the move as its own outgoing transfer.
       const sender = siblings.get(from)
