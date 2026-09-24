@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planSync, type PlanInput } from './chain-sync'
+import { parseSpendLog, parseTransferLog, planSync, usdCentsOf, type PlanInput } from './chain-sync'
 
 const SAFE = '0x1111111111111111111111111111111111111111'
 const ETHERFI = '0x2222222222222222222222222222222222222222'
@@ -45,10 +45,30 @@ describe('planSync — wallet', () => {
 
   it('imports an outgoing transfer to another crypto account of the user as one transfer', () => {
     const plan = planSync(base({
-      siblings: [{ id: 'etherfi', walletAddress: ETHERFI }],
+      siblings: [{ id: 'etherfi', walletAddress: ETHERFI, syncKind: 'etherfi_cash' }],
       transfers: [transfer({ from: SAFE, to: ETHERFI })],
     }))
     expect(plan.inserts).toMatchObject([{ type: 'transfer', accountId: 'safe', counterAccountId: 'etherfi', note: 'Transferência' }])
+  })
+
+  it('leaves transfers between two synced wallets to the sender', () => {
+    const plan = planSync(base({
+      siblings: [{ id: 'other-safe', walletAddress: OTHER, syncKind: 'wallet' }],
+      transfers: [transfer({ from: OTHER, to: SAFE })],
+    }))
+    expect(plan.inserts).toEqual([])
+  })
+
+  it('imports incoming from a sibling on a chain that sibling does not sync', () => {
+    const plan = planSync(base({
+      siblings: [{ id: 'etherfi', walletAddress: ETHERFI, syncKind: 'etherfi_cash' }], // OP only
+      transfers: [transfer({ from: ETHERFI, to: SAFE })], // on Base
+    }))
+    expect(plan.inserts).toMatchObject([{ type: 'earn' }])
+  })
+
+  it('ignores zero-value transfers (address poisoning)', () => {
+    expect(planSync(base({ transfers: [transfer({ from: SAFE, to: OTHER, value: '0' })] })).inserts).toEqual([])
   })
 
   it('ignores non-stablecoin tokens and movements before sync_since', () => {
@@ -65,7 +85,7 @@ describe('planSync — wallet', () => {
 describe('planSync — ether.fi Cash', () => {
   const etherfi = (over: Partial<PlanInput> = {}) => base({
     account: { id: 'etherfi', walletAddress: ETHERFI, syncKind: 'etherfi_cash', syncSince: '2026-09-01' },
-    siblings: [{ id: 'safe', walletAddress: SAFE }],
+    siblings: [{ id: 'safe', walletAddress: SAFE, syncKind: 'wallet' }],
     ...over,
   })
   const spend = { chainId: 10, hash: '0xbbb', logIndex: 7, blockNumber: 200, timeStamp: TUE_NOON, totalUsdAmt: '12345678' } // $12.345678
@@ -91,6 +111,22 @@ describe('planSync — ether.fi Cash', () => {
       transfersIn: [{ amount: 52500, usdAmount: 10000, date: '2026-09-22' }],
     }))
     expect(plan.inserts).toEqual([])
+  })
+
+  it('imports outgoing transfers outside a Spend (withdrawals) as expends', () => {
+    const plan = planSync(etherfi({
+      transfers: [transfer({ chainId: 10, hash: '0xddd', from: ETHERFI, to: OTHER, contractAddress: USDC_OP, value: '5000000' })],
+    }))
+    expect(plan.inserts).toMatchObject([{ type: 'expend', usdAmount: 500, note: null }])
+  })
+
+  it('lets one recorded top-up absorb only one bridged arrival', () => {
+    const arrival = { chainId: 10, from: OTHER, to: ETHERFI, contractAddress: USDC_OP, value: '100000000' }
+    const plan = planSync(etherfi({
+      transfers: [transfer({ ...arrival, hash: '0xe1' }), transfer({ ...arrival, hash: '0xe2' })],
+      transfersIn: [{ amount: 52500, usdAmount: 10000, date: '2026-09-22' }],
+    }))
+    expect(plan.inserts).toMatchObject([{ type: 'earn', externalId: '10:0xe2:3' }])
   })
 
   it('imports other incoming transfers (refunds) as earns', () => {
@@ -158,5 +194,36 @@ describe('PTAX', () => {
 
   it('fails loudly when no rate is available', () => {
     expect(() => planSync(base({ transfers: [transfer()], rates: {} }))).toThrow(/PTAX/)
+  })
+})
+
+describe('log parsing', () => {
+  it('decodes a real ether.fi Spend log (OP, $694.48 debit in USDT)', () => {
+    const spend = parseSpendLog(10, {
+      blockNumber: '0x9605be6', timeStamp: '0x6ab49185', logIndex: '0x95',
+      transactionHash: '0x2d34840a74af6bbdefb54510e30b2603b9af20da2d53c6b8e4f2286fcc124259',
+      topics: [
+        '0x244f4cc0665ad7ee4709aa59b30d3ea581cecde1b0430a3f23a5dc609d4890fc',
+        '0x000000000000000000000000f6f1c73f7ea024c53a82eee06bbf517631e8b8ac',
+        '0xdada11b30c5d366a39c209293cb18dacd3db4ab044e29980d5020e8dbaafb297',
+        '0x0000000000000000000000000000000000000000000000000000000000000001',
+      ],
+      data: '0x00000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000002964ec800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000000000000094b008aa00579c1307b0ef2c499ad98a8ce58e580000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000002964ec800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000002964ec80',
+    })
+    expect(spend).toMatchObject({ safe: '0xf6f1c73f7ea024c53a82eee06bbf517631e8b8ac', totalUsdAmt: '694480000', logIndex: 149, blockNumber: 157309926 })
+    expect(usdCentsOf(spend.totalUsdAmt)).toBe(69448)
+  })
+
+  it('decodes an ERC20 Transfer log', () => {
+    const t = parseTransferLog(8453, USDC_BASE, {
+      blockNumber: '0x10', timeStamp: '0x20', logIndex: '0x3', transactionHash: '0xabc',
+      topics: [
+        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+        '0x0000000000000000000000001111111111111111111111111111111111111111',
+        '0x0000000000000000000000002222222222222222222222222222222222222222',
+      ],
+      data: '0x0000000000000000000000000000000000000000000000000000000005f5e100',
+    })
+    expect(t).toEqual({ chainId: 8453, hash: '0xabc', logIndex: 3, blockNumber: 16, timeStamp: 32, from: SAFE, to: ETHERFI, contractAddress: USDC_BASE, value: '100000000' })
   })
 })

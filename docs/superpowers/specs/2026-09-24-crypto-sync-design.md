@@ -121,7 +121,14 @@ What task 1 found, and where the build departs from the design above:
   - `totalUsdAmt` is 6-decimal (`PriceProvider.DECIMALS`).
   - The safe address is the same on every chain (Create3), so no `deposit_address` is needed.
   - The stablecoins are USDC and USDT, on Base and on OP.
-- **The ether.fi Base leg is not fetched.** ether.fi bridges every Base deposit to the OP safe, and the funds arrive from `TopUpDest`. Counting the Base leg as well would record a single external deposit twice. For the ether.fi account, sync reads only OP incoming transfers and `Spend` logs. Incoming transfers from a sibling crypto account are skipped as top-ups.
+- **The ether.fi Base leg is not fetched.** ether.fi bridges every Base deposit to the OP safe, and the funds arrive from `TopUpDest`. Counting the Base leg as well would record a single external deposit twice, so for the ether.fi account sync reads only OP.
+- **Ether.fi outgoing transfers:** only the settlement leg of a `Spend` (same tx hash) is ignored. Any other outgoing transfer, such as a withdrawal, becomes an `expend`, or a `transfer` when it goes to a sibling. Ignoring every outgoing transfer would inflate the balance.
+- **Transfers between the user's own accounts:** an incoming transfer from a sibling that syncs the same chain is skipped, because the sibling records it as its outgoing `transfer`. The top-up dedupe applies to every kind, and each recorded transfer absorbs one arrival only.
+- **Wallets first:** any run that includes an ether.fi card first syncs the user's auto-synced wallets, whatever their throttle. If a wallet fails, the card is skipped (its error is stored), so a top-up cannot turn into an `earn`.
+- **Re-reads are idempotent:** events whose `external_id` already exists are dropped before matching. A re-read therefore never claims a second row.
+- **Margin behind the head:** `sync_cursor` stops 150 blocks (~5 min) behind the head, to give the indexer time to catch up.
+- **PTAX fallback also covers today:** a transaction made before the ~13h bulletin gets the previous day's rate, and keeps it.
+- **MCP:** the MCP tools' code is unchanged, but `create_account`/`update_account` take `accountInput`, so they accept the new optional sync fields.
 - **Throttle, lock and retry:** before syncing, `last_synced_at` is claimed atomically. After a failure, the retry therefore waits for the next 15-min slot instead of firing on every 2 s poll. The button retries right away.
 - **`listTransactions` does not await the sync.** Synced rows appear on the next poll.
 - **Unique key:** `UNIQUE(user_id, external_id)`, so two users can track the same address.

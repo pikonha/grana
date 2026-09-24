@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account } from '#/db/schema'
+import { z } from 'zod'
 import { accountInput, updateAccountInput } from './schemas'
 import { createAccountCore, updateAccountCore } from './accounts.core'
 import { requireUser } from './session.core'
@@ -29,5 +30,5 @@ export const deleteAccount = createServerFn({ method: 'POST' })
   })
 
 export const syncAccountNow = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => String((data as { id: string }).id))
+  .validator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data).id)
   .handler(async ({ data: id }) => syncAccountNowCore(await requireUser(), id))

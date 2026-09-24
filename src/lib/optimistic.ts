@@ -97,7 +97,7 @@ export function optimisticAccount(
     dueDay?: number;
     prepaid?: boolean;
     walletAddress?: string | null;
-    syncKind?: "wallet" | "etherfi_cash";
+    syncKind?: NonNullable<Account["syncKind"]>;
     syncEnabled?: boolean;
     syncSince?: string;
   },

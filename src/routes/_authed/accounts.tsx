@@ -44,7 +44,7 @@ const kindLabel = (k: string) =>
 type CryptoForm = {
   enabled: boolean;
   walletAddress: string;
-  syncKind: "wallet" | "etherfi_cash";
+  syncKind: NonNullable<Account["syncKind"]>;
   syncSince: string;
   syncEnabled: boolean;
 };
@@ -207,6 +207,12 @@ function Accounts() {
     queryKey: ["transactions"],
     queryFn: () => listTransactions(),
   });
+  const invalidateAll = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: financeQueryKeys.accounts }),
+      qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
+      qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
+    ]);
   const create = useMutation({
     mutationFn: (d: AccountFormInput) => createAccount({ data: d }),
     onMutate: async (input) => {
@@ -304,12 +310,7 @@ function Accounts() {
     onSuccess: clearEdit,
     onError: (_error, _input, context) =>
       qc.setQueryData(financeQueryKeys.accounts, context?.previous),
-    onSettled: () =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: financeQueryKeys.accounts }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
-      ]),
+    onSettled: invalidateAll,
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteAccount({ data: { id } }),
@@ -358,21 +359,11 @@ function Accounts() {
       );
       qc.setQueryData(financeQueryKeys.faturas, context?.previousFaturas);
     },
-    onSettled: () =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: financeQueryKeys.accounts }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
-      ]),
+    onSettled: invalidateAll,
   });
   const sync = useMutation({
     mutationFn: (id: string) => syncAccountNow({ data: { id } }),
-    onSettled: () =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: financeQueryKeys.accounts }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
-      ]),
+    onSettled: invalidateAll,
   });
   return (
     <main className="page-wrap rise-in py-6 sm:py-10">
@@ -527,7 +518,7 @@ function Accounts() {
                 {a.walletAddress && (
                   <span className="text-sm text-muted-foreground">
                     {a.walletAddress.slice(0, 6)}…{a.walletAddress.slice(-4)} ·{" "}
-                    {syncedAgo(a.lastSyncedAt)}
+                    {a.lastSyncError ? "sincronização falhou" : syncedAgo(a.lastSyncedAt)}
                   </span>
                 )}
                 <Button

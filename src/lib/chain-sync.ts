@@ -2,29 +2,36 @@
  * Pure mapping + matching for crypto account sync (no I/O). The fetch/db side
  * lives in `#/server/chain-sync.core.ts`. See docs/superpowers/specs/2026-09-24-crypto-sync-design.md.
  */
-import { appToday } from './dates'
+import { addDays, appToday } from './dates'
 import { assertMoney } from './money'
 import { DEFAULT_TRANSFER_NOTE } from './transaction-labels'
 
 export type SyncKind = 'wallet' | 'etherfi_cash'
 
-/** One ERC20 `Transfer`, Etherscan `tokentx`-shaped (addresses lowercase). */
-export type TokenTransfer = {
-  chainId: number; hash: string; logIndex: number; blockNumber: number; timeStamp: number
-  from: string; to: string; contractAddress: string; value: string
-}
+/**
+ * Chains fetched per kind. ponytail: the Safe is Base-only; ether.fi bridges every Base
+ * deposit to the OP safe (same address, arriving from TopUpDest), so its Base leg is
+ * skipped to avoid counting a top-up twice.
+ */
+export const CHAINS: Record<SyncKind, number[]> = { wallet: [8453], etherfi_cash: [10] }
+
+/** Where a log sits on chain; `<chainId>:<hash>:<logIndex>` is its external_id. */
+export type LogMeta = { chainId: number; hash: string; logIndex: number; blockNumber: number; timeStamp: number }
+/** One allowlist-agnostic ERC20 `Transfer` (addresses lowercase, raw `value`). */
+export type TokenTransfer = LogMeta & { from: string; to: string; contractAddress: string; value: string }
 /** One ether.fi `Spend` log; `totalUsdAmt` is raw 6-decimal USD. */
-export type SpendLog = { chainId: number; hash: string; logIndex: number; blockNumber: number; timeStamp: number; totalUsdAmt: string }
+export type SpendLog = LogMeta & { totalUsdAmt: string }
 
 export type PlanInput = {
   account: { id: string; walletAddress: string; syncKind: SyncKind; syncSince: string }
   /** The user's other crypto accounts. */
-  siblings: { id: string; walletAddress: string }[]
+  siblings: { id: string; walletAddress: string; syncKind: SyncKind }[]
+  /** Already filtered to events whose external_id is not in the db yet. */
   transfers: TokenTransfer[]
   spends: SpendLog[]
   /** BRL per USD (PTAX venda) by YYYY-MM-DD; business days only. */
   rates: Record<string, number>
-  /** Transfers into this account (for ether.fi top-up dedupe). */
+  /** Transfers into this account (top-up dedupe). */
   transfersIn: { amount: number; usdAmount: number | null; date: string }[]
   /** Unclaimed (`external_id IS NULL`) earn/expend rows of this account. */
   existing: { id: string; type: 'earn' | 'expend' | 'transfer'; amount: number; date: string }[]
@@ -44,18 +51,39 @@ export const STABLECOINS: Record<number, string[]> = {
   10: ['0x0b2c639c533813f4aa9d7837caf62653d097ff85', '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58'],
 }
 
+export const externalIdOf = (e: LogMeta) => `${e.chainId}:${e.hash}:${e.logIndex}`
+
+/** An Etherscan/Blockscout `getLogs` result entry (numbers hex-encoded). */
+export type RawLog = { blockNumber: string; timeStamp: string; logIndex: string; transactionHash: string; topics: string[]; data: string }
+
+const addressOf = (topic: string) => `0x${topic.slice(26)}`.toLowerCase()
+const logMeta = (chainId: number, log: RawLog): LogMeta => ({
+  chainId, hash: log.transactionHash, logIndex: Number(log.logIndex), blockNumber: Number(log.blockNumber), timeStamp: Number(log.timeStamp),
+})
+
+/** ERC20 `Transfer(address indexed from, address indexed to, uint256 value)` of `token`. */
+export const parseTransferLog = (chainId: number, token: string, log: RawLog): TokenTransfer => ({
+  ...logMeta(chainId, log), from: addressOf(log.topics[1]), to: addressOf(log.topics[2]), contractAddress: token, value: BigInt(log.data).toString(),
+})
+
+/** ether.fi `Spend(address indexed safe, …)`; data words: tokens, amounts, amountInUsd offsets, then totalUsdAmt, mode. */
+export const parseSpendLog = (chainId: number, log: RawLog): SpendLog & { safe: string } => ({
+  ...logMeta(chainId, log), safe: addressOf(log.topics[1]), totalUsdAmt: BigInt(`0x${log.data.slice(2 + 64 * 3, 2 + 64 * 4)}`).toString(),
+})
+
 /** Raw 6-decimal amount → USD cents, rounded half up. */
 export function usdCentsOf(raw: string): number {
   return Number((BigInt(raw) + 5_000n) / 10_000n)
 }
 
-/** PTAX for `date`, falling back to the last business day before it (weekends, holidays, not-yet-published today). */
+/**
+ * PTAX for `date`, falling back to the last business day before it (weekends, holidays).
+ * ponytail: a tx made today before the ~13h bulletin also gets yesterday's rate, for good.
+ */
 export function ptaxFor(date: string, rates: Record<string, number>): number {
-  const day = new Date(`${date}T00:00:00Z`)
   for (let i = 0; i < 10; i++) {
-    const rate = rates[day.toISOString().slice(0, 10)]
+    const rate = rates[addDays(date, -i)]
     if (rate) return rate
-    day.setUTCDate(day.getUTCDate() - 1)
   }
   throw new Error(`No PTAX rate on or before ${date}`)
 }
@@ -68,44 +96,50 @@ const isStablecoin = (t: TokenTransfer) => STABLECOINS[t.chainId]?.includes(t.co
 
 const within = (a: number, b: number, ratio: number) => Math.abs(a - b) <= ratio * Math.max(a, b)
 
-/** Incoming bridge leg of a top-up already recorded as a transfer into this account (±1 day, ±1% for bridge fees). */
-function isBridgedTopUp(earn: SyncRow, transfersIn: PlanInput['transfersIn']) {
-  return transfersIn.some((t) => daysBetween(t.date, earn.date) <= 1 &&
+/**
+ * Takes the recorded transfer into this account that `earn` is the arrival of
+ * (±1 day, ±1% for bridge fees) out of `pool`. One transfer absorbs one arrival.
+ */
+function takeTopUp(earn: SyncRow, pool: PlanInput['transfersIn']) {
+  const i = pool.findIndex((t) => daysBetween(t.date, earn.date) <= 1 &&
     (t.usdAmount != null ? within(t.usdAmount, earn.usdAmount, 0.01) : within(t.amount, earn.amount, 0.01)))
+  if (i >= 0) pool.splice(i, 1)
+  return i >= 0
 }
 
 export function planSync(input: PlanInput): SyncPlan {
   const { account, rates } = input
   const me = account.walletAddress.toLowerCase()
-  const row = (e: { chainId: number; hash: string; logIndex: number; timeStamp: number }, type: SyncRow['type'], usdAmount: number, extra: Partial<SyncRow> = {}): SyncRow => {
+  const row = (e: LogMeta, type: SyncRow['type'], usdAmount: number, extra: Partial<SyncRow> = {}): SyncRow => {
     const date = dateOf(e.timeStamp)
     return {
-      externalId: `${e.chainId}:${e.hash}:${e.logIndex}`, type, amount: toBrlCents(usdAmount, ptaxFor(date, rates)),
+      externalId: externalIdOf(e), type, amount: toBrlCents(usdAmount, ptaxFor(date, rates)),
       usdAmount: assertMoney(usdAmount), date, accountId: account.id, counterAccountId: null, note: null, ...extra,
     }
   }
 
-  const sibling = new Map(input.siblings.map((s) => [s.walletAddress.toLowerCase(), s.id]))
-  const inWindow = (e: { timeStamp: number }) => dateOf(e.timeStamp) >= account.syncSince
+  const siblings = new Map(input.siblings.map((s) => [s.walletAddress.toLowerCase(), s]))
+  const spendTxs = new Set(input.spends.map((s) => `${s.chainId}:${s.hash}`))
+  const topUps = [...input.transfersIn]
+  const inWindow = (e: LogMeta) => dateOf(e.timeStamp) >= account.syncSince
   const rows: SyncRow[] = []
   for (const t of input.transfers.filter((t) => isStablecoin(t) && inWindow(t))) {
     const usd = usdCentsOf(t.value), from = t.from.toLowerCase(), to = t.to.toLowerCase()
-    if (from === to) continue
-    if (account.syncKind === 'etherfi_cash') {
-      // Outgoing = settlement leg of a Spend (counted via the Spend log). Incoming from a
-      // sibling = top-up, recorded as a transfer by that account's own sync.
-      if (to !== me || sibling.has(from)) continue
+    if (from === to || usd === 0) continue
+    if (to === me) {
+      // A sibling syncing this chain records the move as its own outgoing transfer.
+      const sender = siblings.get(from)
+      if (sender && CHAINS[sender.syncKind].includes(t.chainId)) continue
       const earn = row(t, 'earn', usd)
-      if (!isBridgedTopUp(earn, input.transfersIn)) rows.push(earn)
-    } else if (to === me) rows.push(row(t, 'earn', usd))
-    else if (from === me) {
-      const counter = sibling.get(to)
-      rows.push(counter ? row(t, 'transfer', usd, { counterAccountId: counter, note: DEFAULT_TRANSFER_NOTE }) : row(t, 'expend', usd))
+      if (!takeTopUp(earn, topUps)) rows.push(earn)
+    } else if (from === me) {
+      // Settlement leg of a Spend: counted once, via the Spend log.
+      if (spendTxs.has(`${t.chainId}:${t.hash}`)) continue
+      const receiver = siblings.get(to)
+      rows.push(receiver ? row(t, 'transfer', usd, { counterAccountId: receiver.id, note: DEFAULT_TRANSFER_NOTE }) : row(t, 'expend', usd))
     }
   }
-  if (account.syncKind === 'etherfi_cash') {
-    for (const s of input.spends.filter(inWindow)) rows.push(row(s, 'expend', usdCentsOf(s.totalUsdAmt), { note: ETHERFI_NOTE }))
-  }
+  for (const s of input.spends.filter(inWindow)) rows.push(row(s, 'expend', usdCentsOf(s.totalUsdAmt), { note: ETHERFI_NOTE }))
   return matchExisting(rows, input.existing)
 }
 
