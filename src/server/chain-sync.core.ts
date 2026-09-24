@@ -1,21 +1,26 @@
 import { and, between, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account, transaction, type Account } from '#/db/schema'
-import { CHAINS, dateOf, externalIdOf, parseSpendLog, parseTransferLog, planSync, STABLECOINS, type LogMeta, type RawLog, type SpendLog, type SyncKind, type SyncPlan, type TokenTransfer } from '#/lib/chain-sync'
+import { CHAINS, dateOf, externalIdOf, parseSpendLog, parseTransferItem, planSync, STABLECOINS, type LogMeta, type RawLog, type SpendLog, type SyncKind, type SyncPlan, type TokenTransfer, type TransferItem } from '#/lib/chain-sync'
 import { addDays } from '#/lib/dates'
 
 /**
- * Crypto account sync: Etherscan + PTAX fetch and db writes. Server-only — import it
+ * Crypto account sync: explorer + PTAX fetch and db writes. Server-only — import it
  * only from API routes / server-fn handlers (see transactions.core.ts).
  *
- * Source: Etherscan V2 multichain API (`ETHERSCAN_API_KEY`; its free tier does not
- * cover Base or OP, so the key needs a plan that does). Transfers and Spends both come
- * from `getLogs`, since `tokentx` has no logIndex for the external_id.
+ * Source: Blockscout (free PRO key, 5 req/s) — Etherscan V2's free tier does not cover
+ * Base or OP. Transfers come from the address-indexed REST `token-transfers` (getLogs by
+ * topic on USDC takes ~40s); Spends from the Etherscan-compatible `getLogs` on the
+ * emitter. Without BLOCKSCOUT_API_KEY it falls back to the keyless public instances,
+ * which allow only ~10 RPC requests per ~hour — local dev only.
  */
+const INSTANCES: Record<number, string> = {
+  8453: 'https://base.blockscout.com',
+  10: 'https://explorer.optimism.io',
+}
 const CASH_EVENT_EMITTER_OP = '0x380b2e96799405be6e3d965f4044099891881acb'
 /** keccak256('Spend(address,bytes32,uint8,address[],uint256[],uint256[],uint256,uint8)') */
 const SPEND_TOPIC = '0x244f4cc0665ad7ee4709aa59b30d3ea581cecde1b0430a3f23a5dc609d4890fc'
-const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 // ponytail: fixed ~5 min margin behind the node head so the indexer has caught up before the
 // cursor skips past a block; an indexer lagging longer loses those logs (read the indexed head then).
 const CONFIRMATIONS = 150
@@ -24,39 +29,66 @@ const PAGE = 1000
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function etherscan(chainId: number, params: Record<string, string>) {
-  const key = process.env.ETHERSCAN_API_KEY
-  if (!key) throw new Error('ETHERSCAN_API_KEY not set')
-  const url = `https://api.etherscan.io/v2/api?${new URLSearchParams({ chainid: String(chainId), ...params, apikey: key })}`
-  // ponytail: fixed pacing + one retry on a rate-limit answer keeps us under 3-5 req/s.
-  for (let attempt = 0; ; attempt++) {
-    await sleep(attempt ? 1_500 : 350)
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) })
-    if (!res.ok) throw new Error(`etherscan ${chainId} ${params.action}: HTTP ${res.status}`)
-    const body = await res.json()
-    if ('jsonrpc' in body) {
-      if (body.error) throw new Error(`etherscan ${chainId} ${params.action}: ${body.error.message ?? 'rpc error'}`)
-      return body.result
-    }
-    if (body.status === '1') return body.result
-    if (/^no (logs|records|transactions) found/i.test(body.message)) return []
-    const detail = typeof body.result === 'string' ? body.result : ''
-    if (attempt === 0 && /rate limit/i.test(detail)) continue
-    throw new Error(`etherscan ${chainId} ${params.action}: ${body.message}${detail ? ` (${detail})` : ''}`)
+async function getJson(chainId: number, what: string, url: string) {
+  // ponytail: fixed pacing + one retry on 429 keeps us under the free rate limit.
+  let res: Response | undefined
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await sleep(attempt ? 2_000 : 250)
+    res = await fetch(url, { signal: AbortSignal.timeout(20_000) })
+    if (res.status !== 429) break
   }
+  if (!res?.ok) throw new Error(`explorer ${chainId} ${what}: HTTP ${res?.status}`)
+  return res.json()
+}
+
+/** Etherscan-compatible RPC (`module=…&action=…`). */
+async function rpc(chainId: number, params: Record<string, string>) {
+  const key = process.env.BLOCKSCOUT_API_KEY
+  const url = key
+    ? `https://api.blockscout.com/v2/api?${new URLSearchParams({ chain_id: String(chainId), ...params, apikey: key })}`
+    : `${INSTANCES[chainId]}/api?${new URLSearchParams(params)}`
+  const body = await getJson(chainId, params.action, url)
+  if ('jsonrpc' in body) return body.result
+  if (body.status === '1') return body.result
+  if (/^no (logs|records|transactions) found/i.test(body.message)) return []
+  throw new Error(`explorer ${chainId} ${params.action}: ${body.message}${typeof body.result === 'string' ? ` (${body.result})` : ''}`)
+}
+
+/** REST v2 (`/api/v2/…`). */
+async function rest(chainId: number, path: string, params: Record<string, string>) {
+  const key = process.env.BLOCKSCOUT_API_KEY
+  const url = key
+    ? `https://api.blockscout.com/${chainId}/api/v2${path}?${new URLSearchParams({ ...params, apikey: key })}`
+    : `${INSTANCES[chainId]}/api/v2${path}?${new URLSearchParams(params)}`
+  return getJson(chainId, path.split('/').at(-1)!, url)
 }
 
 /** All logs in [fromBlock, toBlock]; a full page re-reads from its last block (ascending order). */
 async function getLogs(chainId: number, fromBlock: number, toBlock: number, filter: Record<string, string>): Promise<RawLog[]> {
   const out: RawLog[] = []
   for (let from = fromBlock; ;) {
-    const page: RawLog[] = await etherscan(chainId, { module: 'logs', action: 'getLogs', fromBlock: String(from), toBlock: String(toBlock), page: '1', offset: String(PAGE), ...filter })
-    if (!Array.isArray(page)) throw new Error(`etherscan ${chainId}: malformed getLogs response`)
+    const page: RawLog[] = await rpc(chainId, { module: 'logs', action: 'getLogs', fromBlock: String(from), toBlock: String(toBlock), ...filter })
+    if (!Array.isArray(page)) throw new Error(`explorer ${chainId}: malformed getLogs response`)
     if (page.length < PAGE) return [...out, ...page]
     const last = Number(page.at(-1)!.blockNumber)
-    if (last === from) throw new Error(`etherscan ${chainId}: over ${PAGE} logs in block ${last}`)
+    if (last === from) throw new Error(`explorer ${chainId}: over ${PAGE} logs in block ${last}`)
     out.push(...page.filter((log) => Number(log.blockNumber) < last))
     from = last
+  }
+}
+
+/** `token` transfers from/to `address` in [fromBlock, toBlock]; pages run newest → oldest. */
+async function tokenTransfers(chainId: number, address: string, token: string, fromBlock: number, toBlock: number) {
+  const out: TokenTransfer[] = []
+  let next: Record<string, string> = {}
+  for (;;) {
+    const page = await rest(chainId, `/addresses/${address}/token-transfers`, { type: 'ERC-20', token, ...next }) as { items?: TransferItem[]; next_page_params?: Record<string, string | number> | null }
+    if (!Array.isArray(page.items)) throw new Error(`explorer ${chainId}: malformed token-transfers response`)
+    for (const item of page.items) {
+      if (item.block_number >= fromBlock && item.block_number <= toBlock) out.push(parseTransferItem(chainId, token, item))
+    }
+    if (!page.next_page_params || !page.items.length || page.items.at(-1)!.block_number < fromBlock) return out
+    next = Object.fromEntries(Object.entries(page.next_page_params).map(([k, v]) => [k, String(v)]))
   }
 }
 
@@ -64,13 +96,7 @@ const topicOf = (address: string) => `0x${address.slice(2).toLowerCase().padStar
 
 async function fetchChain(chainId: number, kind: SyncKind, address: string, fromBlock: number, toBlock: number) {
   const transfers: TokenTransfer[] = [], spends: SpendLog[] = []
-  for (const token of STABLECOINS[chainId]) {
-    // One query per direction (topic1 = from, topic2 = to).
-    for (const n of [1, 2]) {
-      const logs = await getLogs(chainId, fromBlock, toBlock, { address: token, topic0: TRANSFER_TOPIC, [`topic0_${n}_opr`]: 'and', [`topic${n}`]: topicOf(address) })
-      for (const log of logs) if (log.topics[0] === TRANSFER_TOPIC) transfers.push(parseTransferLog(chainId, token, log))
-    }
-  }
+  for (const token of STABLECOINS[chainId]) transfers.push(...await tokenTransfers(chainId, address, token, fromBlock, toBlock))
   // The emitter lives on OP only.
   if (kind === 'etherfi_cash' && chainId === 10) {
     const logs = await getLogs(chainId, fromBlock, toBlock, { address: CASH_EVENT_EMITTER_OP, topic0: SPEND_TOPIC, topic0_1_opr: 'and', topic1: topicOf(address) })
@@ -100,13 +126,13 @@ async function syncAccount(acc: Account, linked: Account[]) {
   const cursor = { ...acc.syncCursor }
   const transfers: TokenTransfer[] = [], spends: SpendLog[] = []
   for (const chainId of CHAINS[syncKind]) {
-    const head = Number(await etherscan(chainId, { module: 'proxy', action: 'eth_blockNumber' }))
-    if (!Number.isSafeInteger(head)) throw new Error(`etherscan ${chainId}: malformed block number`)
+    const head = Number(await rpc(chainId, { module: 'block', action: 'eth_block_number' }))
+    if (!Number.isSafeInteger(head)) throw new Error(`explorer ${chainId}: malformed block number`)
     const toBlock = head - CONFIRMATIONS
     const fromBlock = cursor[chainId] != null
       ? cursor[chainId] + 1
-      : Number(await etherscan(chainId, { module: 'block', action: 'getblocknobytime', timestamp: String(Date.parse(`${syncSince}T00:00:00Z`) / 1000), closest: 'before' }))
-    if (!Number.isSafeInteger(fromBlock)) throw new Error(`etherscan ${chainId}: malformed start block`)
+      : Number((await rpc(chainId, { module: 'block', action: 'getblocknobytime', timestamp: String(Date.parse(`${syncSince}T00:00:00Z`) / 1000), closest: 'before' })).blockNumber)
+    if (!Number.isSafeInteger(fromBlock)) throw new Error(`explorer ${chainId}: malformed start block`)
     if (fromBlock <= toBlock) {
       const found = await fetchChain(chainId, syncKind, walletAddress, fromBlock, toBlock)
       transfers.push(...found.transfers)
