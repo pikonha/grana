@@ -61,7 +61,7 @@ export const INTERNAL_COUNTERPARTIES: Record<number, string[]> = {
 
 export const externalIdOf = (e: LogMeta) => `${e.chainId}:${e.hash}:${e.logIndex}`
 
-/** An Etherscan/Blockscout `getLogs` result entry (numbers hex-encoded). */
+/** An Etherscan `getLogs` result entry (numbers hex-encoded). */
 export type RawLog = { blockNumber: string; timeStamp: string; logIndex: string; transactionHash: string; topics: string[]; data: string }
 
 const addressOf = (topic: string) => `0x${topic.slice(26)}`.toLowerCase()
@@ -69,17 +69,9 @@ const logMeta = (chainId: number, log: RawLog): LogMeta => ({
   chainId, hash: log.transactionHash, logIndex: Number(log.logIndex), blockNumber: Number(log.blockNumber), timeStamp: Number(log.timeStamp),
 })
 
-/** A Blockscout REST v2 `token-transfers` item (only the fields used). */
-export type TransferItem = {
-  block_number: number; log_index: number; timestamp: string; transaction_hash: string
-  from: { hash: string }; to: { hash: string }; total: { value: string }
-}
-
-/** One ERC20 transfer of `token` (the query filter; the item's token field varies by Blockscout version). */
-export const parseTransferItem = (chainId: number, token: string, item: TransferItem): TokenTransfer => ({
-  chainId, hash: item.transaction_hash, logIndex: item.log_index, blockNumber: item.block_number,
-  timeStamp: Date.parse(item.timestamp) / 1000,
-  from: item.from.hash.toLowerCase(), to: item.to.hash.toLowerCase(), contractAddress: token.toLowerCase(), value: BigInt(item.total.value).toString(),
+/** ERC20 `Transfer(address indexed from, address indexed to, uint256 value)` of `token`. */
+export const parseTransferLog = (chainId: number, token: string, log: RawLog): TokenTransfer => ({
+  ...logMeta(chainId, log), from: addressOf(log.topics[1]), to: addressOf(log.topics[2]), contractAddress: token, value: BigInt(log.data).toString(),
 })
 
 /** ether.fi `Spend(address indexed safe, …)`; data words: tokens, amounts, amountInUsd offsets, then totalUsdAmt, mode. */
