@@ -32,3 +32,11 @@ describe('webhookTransactionInput',()=>{
   it('rejects unknown keys',()=>expect(webhookTransactionInput.safeParse({...base,card_id:'x'}).success).toBe(false))
   it('accepts known keys',()=>expect(webhookTransactionInput.safeParse(base).success).toBe(true))
 })
+describe('accountInput crypto sync',()=>{
+  const safe={name:'Safe',kind:'bank_account' as const,walletAddress:'0xABCDEFabcdef0123456789012345678901234567',syncKind:'wallet' as const,syncSince:'2026-09-01'}
+  it('lowercases the wallet address',()=>expect(accountInput.parse(safe).walletAddress).toBe('0xabcdefabcdef0123456789012345678901234567'))
+  it('rejects malformed addresses',()=>expect(accountInput.safeParse({...safe,walletAddress:'0x123'}).success).toBe(false))
+  it('requires kind and start date for crypto accounts',()=>expect(accountInput.safeParse({...safe,syncSince:undefined}).success).toBe(false))
+  it('accepts null to clear the address',()=>expect(accountInput.parse({name:'Safe',kind:'bank_account',walletAddress:null}).walletAddress).toBeNull())
+  it('keeps the refinements on update',()=>expect(updateAccountInput.safeParse({...safe,id:'11111111-1111-4111-8111-111111111111',syncKind:undefined}).success).toBe(false))
+})

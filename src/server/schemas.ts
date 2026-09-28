@@ -58,8 +58,15 @@ export const accountInput = z.object({
   closingDay: z.number().int().min(1).max(28).optional(),
   dueDay: z.number().int().min(1).max(28).optional(),
   prepaid: z.boolean().optional(),
+  // Crypto sync. walletAddress: omitted = keep as is, null = no longer a crypto account.
+  walletAddress: z.string().trim().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddress must be 0x + 40 hex chars').transform((a) => a.toLowerCase()).nullable().optional(),
+  syncKind: z.enum(['wallet', 'etherfi_cash']).optional(),
+  syncEnabled: z.boolean().optional(),
+  syncSince: isoDate.optional(),
 }).refine((data) => data.kind !== 'credit_card' || data.prepaid || (data.closingDay !== undefined && data.dueDay !== undefined), {
   message: 'closingDay and dueDay are required for limit-based credit cards',
+}).refine((data) => !data.walletAddress || (data.syncKind && data.syncSince), {
+  message: 'syncKind and syncSince are required for crypto accounts',
 })
 export type AccountInput = z.infer<typeof accountInput>
 

@@ -165,11 +165,15 @@ daily `YYYY-MM-DD` · weekly `YYYY-MM-DD` (Monday) · monthly `YYYY-MM` · yearl
 - `BETTER_AUTH_URL` — public base URL the app is served from (used for auth callbacks and MCP OAuth).
 - `HERMES_WEBHOOK_SECRET` — bearer secret for the transactions webhook.
 - `HERMES_USER_ID` — Better Auth user ID that owns writes made through the webhook.
+- `BLOCKSCOUT_API_KEY` — Blockscout PRO API key (free at dev.blockscout.com) for crypto account sync. Without it sync falls back to the keyless public explorers (~10 req/window, dev only).
 
 ## Commands
 - `pnpm dev` · `pnpm build` · `pnpm start` (`node .output/server/index.mjs`)
 - `pnpm exec vitest run` — unit tests (money/installments/recurrence). Uses standalone `vitest.config.ts` because the app `vite.config.ts` loads nitro/start plugins incompatible with vitest.
 - `pnpm db:generate` / `pnpm db:migrate` (drizzle-kit). Migration `drizzle/0000_*.sql` is generated.
+
+## Crypto sync
+Accounts with `wallet_address` set are crypto accounts (`sync_kind` `wallet` = Base Safe, `etherfi_cash` = ether.fi card on OP). Pure mapping/matching in `src/lib/chain-sync.ts` (tested); fetch + writes in `src/server/chain-sync.core.ts`. `listTransactions` fires `syncDueAccounts` without awaiting (throttled 15 min/account via an atomic claim on `last_synced_at`); the "Sincronizar" button calls `syncAccountNow`. Synced rows carry `external_id` (`<chainid>:<txhash>:<logIndex>`, `UNIQUE(user_id, external_id)`) and `usd_amount`; `amount` is BRL cents at the tx date's PTAX. Data source is Blockscout, not Etherscan: Etherscan V2's free tier refuses Base and OP. Transfers come from the REST `token-transfers` endpoint (address-indexed); `getLogs` by topic on USDC takes about 40 s. How it works: `docs/crypto-sync.md`. Design: `docs/superpowers/specs/2026-09-24-crypto-sync-design.md`.
 
 ## Deploy (Railway)
 Web service + Postgres. Run migrations against the provisioned DB (`pnpm db:migrate`) before/at first deploy. No cron service: `listTransactions` calls `materializeDueRules` on every read (idempotent, catches up missed days).

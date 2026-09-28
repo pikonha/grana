@@ -44,6 +44,8 @@ export function optimisticTransaction(
     periodKey: null,
     note: input.note ?? null,
     createdAt: new Date(),
+    externalId: null,
+    usdAmount: null,
     tags: [],
   };
 }
@@ -94,6 +96,10 @@ export function optimisticAccount(
     closingDay?: number;
     dueDay?: number;
     prepaid?: boolean;
+    walletAddress?: string | null;
+    syncKind?: NonNullable<Account["syncKind"]>;
+    syncEnabled?: boolean;
+    syncSince?: string;
   },
   id = optimisticId(),
 ): Account {
@@ -108,6 +114,13 @@ export function optimisticAccount(
     closingDay: isCreditCard && !prepaid ? input.closingDay ?? null : null,
     dueDay: isCreditCard && !prepaid ? input.dueDay ?? null : null,
     prepaid,
+    walletAddress: input.walletAddress ?? null,
+    syncKind: input.walletAddress ? input.syncKind ?? null : null,
+    syncEnabled: !!input.walletAddress && (input.syncEnabled ?? false),
+    syncSince: input.walletAddress ? input.syncSince ?? null : null,
+    syncCursor: null,
+    lastSyncedAt: null,
+    lastSyncError: null,
   };
 }
 

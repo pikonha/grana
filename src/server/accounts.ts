@@ -2,9 +2,11 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account } from '#/db/schema'
+import { z } from 'zod'
 import { accountInput, updateAccountInput } from './schemas'
 import { createAccountCore, updateAccountCore } from './accounts.core'
 import { requireUser } from './session.core'
+import { syncAccountNowCore } from './chain-sync.core'
 
 export const listAccounts = createServerFn({ method: 'GET' }).handler(async () => {
   const userId = await requireUser()
@@ -26,3 +28,7 @@ export const deleteAccount = createServerFn({ method: 'POST' })
     await db.delete(account).where(and(eq(account.id, id), eq(account.userId, userId)))
     return { success: true }
   })
+
+export const syncAccountNow = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data).id)
+  .handler(async ({ data: id }) => syncAccountNowCore(await requireUser(), id))

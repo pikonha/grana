@@ -28,6 +28,8 @@ function tx(overrides: Partial<TransactionRow>): TransactionRow {
     date: dayThisMonth(10),
     accountId: null,
     counterAccountId: null,
+    externalId: null,
+    usdAmount: null,
     installmentPlanId: null,
     recurrenceRuleId: null,
     periodKey: null,
