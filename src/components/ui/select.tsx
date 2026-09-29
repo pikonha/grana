@@ -42,7 +42,7 @@ export function SelectContent({
         className={cn(
           "brutal-shadow z-50 max-h-[var(--radix-select-content-available-height)] min-w-[8rem] overflow-hidden border-2 border-foreground bg-popover text-popover-foreground",
           position === "popper" &&
-            "w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)]",
+            "w-max min-w-[var(--radix-select-trigger-width)] max-w-[var(--radix-select-content-available-width)]",
           className
         )}
         {...props}
