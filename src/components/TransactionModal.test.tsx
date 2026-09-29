@@ -92,6 +92,40 @@ describe("TransactionModal", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("creates a tag without closing the dialog", async () => {
+    const onCreateCategory = vi.fn().mockResolvedValue("new-tag-id");
+    render(
+      <TransactionModal
+        type="expend"
+        accounts={accounts}
+        categories={categories}
+        onCreate={vi.fn()}
+        onCreateCategory={onCreateCategory}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar despesa" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Etiquetas: Nenhuma" })
+    );
+    const search = screen.getByLabelText("Buscar ou criar etiqueta");
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    // The modal Dialog sets `pointer-events: none` on <body>; a dropdown that doesn't
+    // opt back in lets clicks fall through to the overlay, which closes the Dialog.
+    expect(document.body.style.pointerEvents).toBe("none");
+    expect(search.closest('[style*="pointer-events: auto"]')).not.toBeNull();
+    fireEvent.change(search, { target: { value: "Casa" } });
+    const create = screen.getByRole("button", { name: 'Criar "Casa"' });
+    fireEvent.pointerDown(create);
+    fireEvent.click(create);
+
+    await waitFor(() =>
+      expect(onCreateCategory).toHaveBeenCalledWith("Casa", expect.any(String))
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
   it("shows the selected repeat option and submits recurrence", async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(
