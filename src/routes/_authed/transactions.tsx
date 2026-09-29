@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { listAccounts } from "#/server/accounts";
 import { createCategory, listCategories } from "#/server/categories";
@@ -112,6 +112,8 @@ type DisplayRow =
       onDelete: () => void;
     };
 
+const PAGE_SIZE = 20;
+
 const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", {
     style: "currency",
@@ -169,6 +171,8 @@ function Transactions() {
   const [count, setCount] = useState("2");
   const [activeMonth, setActiveMonth] = useState(localMonthKey);
   const [filterAccount, setFilterAccount] = useState("");
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const sentinel = useRef<HTMLDivElement>(null);
 
   const selected = accounts.find((account) => account.id === accountId);
   const canInstall = type === "expend" && selected?.kind === "credit_card";
@@ -435,6 +439,21 @@ function Transactions() {
       },
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
+  const pageRows = rows.slice(0, visible);
+  const hasMore = rows.length > visible;
+
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible((count) => count + PAGE_SIZE);
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, visible]);
 
   return (
     <main className="page-wrap rise-in py-6 sm:py-10">
@@ -601,13 +620,20 @@ function Transactions() {
         </CardHeader>
         <CardContent>
           <div className="relative mb-4 flex flex-wrap items-center justify-center gap-4">
-            <MonthNav month={activeMonth} onChange={setActiveMonth} />
+            <MonthNav
+              month={activeMonth}
+              onChange={(month) => {
+                setActiveMonth(month);
+                setVisible(PAGE_SIZE);
+              }}
+            />
             <div className="w-full sm:absolute sm:inset-y-0 sm:right-0 sm:flex sm:w-auto sm:items-center">
               <Select
                 value={filterAccount || EMPTY_SELECT_VALUE}
-                onValueChange={(value) =>
-                  setFilterAccount(value === EMPTY_SELECT_VALUE ? "" : value)
-                }
+                onValueChange={(value) => {
+                  setFilterAccount(value === EMPTY_SELECT_VALUE ? "" : value);
+                  setVisible(PAGE_SIZE);
+                }}
               >
                 <SelectTrigger
                   aria-label="Filtrar por conta"
@@ -615,7 +641,7 @@ function Transactions() {
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="end">
                   <SelectItem value={EMPTY_SELECT_VALUE}>
                     Todas as contas
                   </SelectItem>
@@ -641,7 +667,7 @@ function Transactions() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {pageRows.map((row) => (
                 <TableRow key={row.key}>
                     <TableCell className="align-top tabular-nums">
                       <div className="font-medium">{dayLabel(row.date)}</div>
@@ -792,6 +818,7 @@ function Transactions() {
               )}
             </TableBody>
           </Table>
+          {hasMore && <div ref={sentinel} className="h-px" />}
         </CardContent>
       </Card>
     </main>
