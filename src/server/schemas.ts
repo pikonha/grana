@@ -36,14 +36,19 @@ export const createTransactionInput = transactionInput.extend({
 })
 export type CreateTransactionInput = z.infer<typeof createTransactionInput>
 
-export const transferInput = z.object({
+const transferFields = z.object({
   amount: cents.positive(), date: isoDate,
   account_id: z.string().uuid(), counter_account_id: z.string().uuid(),
   note: z.string().max(500).optional().default(DEFAULT_TRANSFER_NOTE),
-}).refine((data) => data.account_id !== data.counter_account_id, {
-  message: 'Cannot transfer to the same account',
 })
+const distinctAccounts = [(data: { account_id: string; counter_account_id: string }) => data.account_id !== data.counter_account_id, {
+  message: 'Cannot transfer to the same account',
+}] as const
+export const transferInput = transferFields.refine(...distinctAccounts)
 export type TransferInput = z.infer<typeof transferInput>
+
+export const updateTransferInput = transferFields.extend({ id: z.string().uuid() }).refine(...distinctAccounts)
+export type UpdateTransferInput = z.infer<typeof updateTransferInput>
 
 export const faturaPaymentInput = z.object({ account_id: z.string().uuid(), cycle_key: isoDate, paid_at: isoDate.optional() })
 export type FaturaPaymentInput = z.infer<typeof faturaPaymentInput>

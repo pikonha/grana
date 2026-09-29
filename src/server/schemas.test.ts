@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { accountInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateTransactionInput, webhookTransactionInput } from './schemas'
+import { accountInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateTransferInput, updateTransactionInput, webhookTransactionInput } from './schemas'
 const base={type:'expend' as const,amount:1200,date:'2026-07-11'}
 describe('createTransactionInput',()=>{
   it('accepts plain transactions',()=>expect(createTransactionInput.safeParse(base).success).toBe(true))
@@ -11,6 +11,11 @@ describe('transferInput',()=>{
   const transferBase={amount:1200,date:'2026-07-11',account_id:'11111111-1111-4111-8111-111111111111',counter_account_id:'22222222-2222-4222-8222-222222222222'}
   it('defaults the transfer name',()=>expect(transferInput.parse(transferBase).note).toBe('Transferência'))
   it('keeps custom transfer names',()=>expect(transferInput.parse({...transferBase,note:'Reserva'}).note).toBe('Reserva'))
+  it('requires an id and distinct accounts on update',()=>{
+    expect(updateTransferInput.safeParse(transferBase).success).toBe(false)
+    expect(updateTransferInput.safeParse({...transferBase,id:'33333333-3333-4333-8333-333333333333',counter_account_id:transferBase.account_id}).success).toBe(false)
+    expect(updateTransferInput.parse({...transferBase,id:'33333333-3333-4333-8333-333333333333'}).note).toBe('Transferência')
+  })
 })
 describe('update schemas',()=>{
   const id='11111111-1111-4111-8111-111111111111'

@@ -5,8 +5,8 @@ import { account, installmentPlan, recurrenceRule, tag, transaction, transaction
 import { assertMoney } from '#/lib/money'
 import { normalizeForMatch } from '#/lib/csv'
 import { tagColorForIndex } from '#/lib/tag-colors'
-import { createTransactionInput, importTransactionsInput, transferInput, updateTransactionInput } from './schemas'
-import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateTransactionCore } from './transactions.core'
+import { createTransactionInput, importTransactionsInput, transferInput, updateTransactionInput, updateTransferInput } from './schemas'
+import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateTransactionCore, updateTransferCore } from './transactions.core'
 import { tagsByRule, tagsByTransaction } from './tags.core'
 import { requireUser } from './session.core'
 import { materializeDueRules } from './recurrence.core'
@@ -43,6 +43,13 @@ export const createTransfer = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const userId = await requireUser()
     return createTransferCore(userId, data)
+  })
+
+export const updateTransfer = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => updateTransferInput.parse(data))
+  .handler(async ({ data }) => {
+    const userId = await requireUser()
+    return updateTransferCore(userId, data)
   })
 
 export const updateTransaction = createServerFn({ method: 'POST' })

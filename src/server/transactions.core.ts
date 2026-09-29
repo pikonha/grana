@@ -4,7 +4,7 @@ import { account, installmentPlan, recurrenceRule, recurrenceRuleTag, transactio
 import { addMonths, splitInstallments } from '#/lib/installments'
 import { assertMoney } from '#/lib/money'
 import { transferNote } from '#/lib/transaction-labels'
-import { inputTagIds, type TransactionInput, type TransferInput, type UpdateTransactionInput } from './schemas'
+import { inputTagIds, type TransactionInput, type TransferInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
 import { assertOwnedTags } from './tags.core'
 
 export async function assertOwnedAccounts(userId: string, ids: (string | null | undefined)[]) {
@@ -67,6 +67,18 @@ export async function createTransferCore(userId: string, input: TransferInput) {
     userId, type: 'transfer', amount: input.amount, date: input.date,
     accountId: input.account_id, counterAccountId: input.counter_account_id, note: transferNote(input.note),
   }).returning({ id: transaction.id })
+  return { id: row.id }
+}
+
+export async function updateTransferCore(userId: string, input: UpdateTransferInput) {
+  assertMoney(input.amount)
+  await assertOwnedAccounts(userId, [input.account_id, input.counter_account_id])
+  const [row] = await db.update(transaction).set({
+    amount: input.amount, date: input.date,
+    accountId: input.account_id, counterAccountId: input.counter_account_id, note: transferNote(input.note),
+  }).where(and(eq(transaction.id, input.id), eq(transaction.userId, userId), eq(transaction.type, 'transfer')))
+    .returning({ id: transaction.id })
+  if (!row) throw new Error('Transfer not found')
   return { id: row.id }
 }
 

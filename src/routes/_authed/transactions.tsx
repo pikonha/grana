@@ -13,11 +13,13 @@ import {
   listRecurrenceRules,
   listTransactions,
   updateTransaction,
+  updateTransfer,
 } from "#/server/transactions";
 import type {
   CreateTransactionInput,
   TransferInput,
   UpdateTransactionInput,
+  UpdateTransferInput,
 } from "#/server/schemas";
 import type { Category, Transaction } from "#/db/schema";
 import type {
@@ -34,6 +36,7 @@ import {
   optimisticTransfer,
 } from "#/lib/optimistic";
 import { localMonthKey, scheduledDatesInMonth } from "#/lib/recurrence";
+import { transferNote } from "#/lib/transaction-labels";
 import { CategorySelect } from "@/components/CategorySelect";
 import { MonthNav } from "@/components/MonthNav";
 import { MoneyInput } from "@/components/MoneyInput";
@@ -298,6 +301,38 @@ function Transactions() {
         financeQueryKeys.transactions,
         (current = []) =>
           newestTransactions([optimisticTransfer(data), ...current]),
+      );
+      return { previous };
+    },
+    onError: (_error, _data, context) =>
+      qc.setQueryData(financeQueryKeys.transactions, context?.previous),
+    onSettled: refresh,
+  });
+
+  const editTransfer = useMutation({
+    mutationFn: (data: UpdateTransferInput) => updateTransfer({ data }),
+    onMutate: async (data) => {
+      await qc.cancelQueries({ queryKey: financeQueryKeys.transactions });
+      const previous = qc.getQueryData<TransactionRow[]>(
+        financeQueryKeys.transactions,
+      );
+      qc.setQueryData<TransactionRow[]>(
+        financeQueryKeys.transactions,
+        (current = []) =>
+          newestTransactions(
+            current.map((transaction) =>
+              transaction.id === data.id
+                ? {
+                    ...transaction,
+                    amount: data.amount,
+                    date: data.date,
+                    accountId: data.account_id,
+                    counterAccountId: data.counter_account_id,
+                    note: transferNote(data.note),
+                  }
+                : transaction,
+            ),
+          ),
       );
       return { previous };
     },
@@ -678,6 +713,28 @@ function Transactions() {
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="flex justify-end gap-2">
+                        {row.kind === "transaction" &&
+                          row.tx.type === "transfer" && (
+                            <TransferModal
+                              accounts={accounts}
+                              initialTransfer={row.tx}
+                              onTransfer={(data) =>
+                                editTransfer.mutateAsync({ ...data, id: row.tx.id })
+                              }
+                              trigger={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Editar"
+                                  className="size-8"
+                                  disabled={row.pending}
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                              }
+                            />
+                          )}
                         {row.kind === "transaction" &&
                           !row.tx.installmentPlanId &&
                           row.tx.type !== "transfer" && (
