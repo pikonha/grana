@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pencil, RefreshCw, Save, X } from "lucide-react";
 import {
   createAccount,
@@ -198,6 +198,9 @@ function Accounts() {
   const { data = [] } = useQuery({
     queryKey: ["accounts"],
     queryFn: () => listAccounts(),
+    // Background sync (claimed on load): poll until it finishes so the spinner stops on time.
+    refetchInterval: (query) =>
+      query.state.data?.some((a) => a.syncing) ? 2_000 : false,
   });
   const { data: faturas = [] } = useQuery({
     queryKey: ["faturas"],
@@ -213,6 +216,13 @@ function Accounts() {
       qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
       qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
     ]);
+  // Synced rows land in transactions/faturas: refresh them when a background sync ends.
+  const syncing = data.some((a) => a.syncing);
+  const wasSyncing = useRef(false);
+  useEffect(() => {
+    if (wasSyncing.current && !syncing) void invalidateAll();
+    wasSyncing.current = syncing;
+  }, [syncing]);
   const create = useMutation({
     mutationFn: (d: AccountFormInput) => createAccount({ data: d }),
     onMutate: async (input) => {
@@ -518,7 +528,11 @@ function Accounts() {
                 {a.walletAddress && (
                   <span className="text-sm text-muted-foreground">
                     {a.walletAddress.slice(0, 6)}…{a.walletAddress.slice(-4)} ·{" "}
-                    {a.lastSyncError ? "sincronização falhou" : syncedAgo(a.lastSyncedAt)}
+                    {a.syncing
+                      ? "sincronizando…"
+                      : a.lastSyncError
+                        ? "sincronização falhou"
+                        : syncedAgo(a.lastSyncedAt)}
                   </span>
                 )}
                 <Button
@@ -550,11 +564,11 @@ function Accounts() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={sync.isPending && sync.variables === a.id}
+                    disabled={a.syncing || (sync.isPending && sync.variables === a.id)}
                     onClick={() => sync.mutate(a.id)}
                   >
                     <RefreshCw
-                      className={`size-4 ${sync.isPending && sync.variables === a.id ? "animate-spin" : ""}`}
+                      className={`size-4 ${a.syncing || (sync.isPending && sync.variables === a.id) ? "animate-spin" : ""}`}
                     />
                     Sincronizar
                   </Button>

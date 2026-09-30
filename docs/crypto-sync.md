@@ -23,14 +23,14 @@ Other account columns:
 
 ```mermaid
 flowchart LR
-  A[listTransactions] -->|awaited| B[materializeDueRules]
-  A -.->|not awaited| C[syncDueAccounts]
+  A[listAccounts] -->|awaits the claim| C[syncDueAccounts]
   C --> D{sync_enabled and\nlast_synced_at < now − 15 min?}
   D -->|atomic claim| E[runSync: wallets first, then ether.fi]
+  C -.->|not awaited| E
   F[Sincronizar button] --> G[syncAccountNow] --> E
 ```
 
-- **On read:** `listTransactions` fires `syncDueAccounts` without waiting, so synced rows appear on the next 2 s poll.
+- **On read:** `listAccounts` awaits `syncDueAccounts`, which only claims the due accounts and starts `runSync` without waiting. Accounts in a run come back with `syncing: true` (an in-process `Set`, one instance only). The Contas page spins the Sincronizar button and polls every 2 s until it clears, then refreshes transactions and faturas.
 - **Throttle and lock:** an atomic `UPDATE … WHERE last_synced_at < now − 15 min` claims each account's slot. This throttles every 15 min, including after failures, and stops concurrent reads from fetching the same account twice.
 - **Manual button:** `syncAccountNow` runs right away, even with auto-sync off.
 - **Order:** a run that includes an ether.fi card first syncs the user's auto-synced wallets. The card's top-up dedupe needs the Safe's `transfer` row to exist already. If a wallet fails, the card is skipped and gets an error.
@@ -49,7 +49,7 @@ flowchart LR
    - claim the matched rows;
    - advance the cursor and clear the error. This last write only happens while the account config is still the one the run started with.
 
-Any failure aborts that account: no rows are written, the cursor stays put, and `last_sync_error` is set. `syncDueAccounts` never throws into `listTransactions`.
+Any failure aborts that account: no rows are written, the cursor stays put, and `last_sync_error` is set. `syncDueAccounts` never throws into `listAccounts`.
 
 ## Mapping rules (`planSync`)
 

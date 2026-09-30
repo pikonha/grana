@@ -202,24 +202,38 @@ async function syncAccount(acc: Account, linked: Account[]) {
 async function runSync(targets: Account[], linked: Account[]) {
   const needsWallets = targets.some((a) => a.syncKind === 'etherfi_cash')
   const wallets = linked.filter((a) => a.syncKind === 'wallet' && (targets.includes(a) || (needsWallets && a.syncEnabled)))
+  const queue = [...wallets, ...targets.filter((a) => a.syncKind !== 'wallet')]
+  // Marked before the first await, so a caller that just claimed sees them as syncing.
+  for (const acc of queue) syncing.add(acc.id)
   let walletFailed = false
-  for (const acc of [...wallets, ...targets.filter((a) => a.syncKind !== 'wallet')]) {
-    try {
-      if (acc.syncKind === 'etherfi_cash' && walletFailed) throw new Error('Carteira vinculada falhou nesta sincronização; tentando de novo depois')
-      await syncAccount(acc, linked)
-    } catch (error) {
-      if (acc.syncKind === 'wallet') walletFailed = true
-      const message = error instanceof Error ? error.message : String(error)
-      console.error(`[chain-sync] account ${acc.id}:`, message)
-      await db.update(account).set({ lastSyncError: message.slice(0, 500) }).where(eq(account.id, acc.id))
+  try {
+    for (const acc of queue) {
+      try {
+        if (acc.syncKind === 'etherfi_cash' && walletFailed) throw new Error('Carteira vinculada falhou nesta sincronização; tentando de novo depois')
+        await syncAccount(acc, linked)
+      } catch (error) {
+        if (acc.syncKind === 'wallet') walletFailed = true
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[chain-sync] account ${acc.id}:`, message)
+        await db.update(account).set({ lastSyncError: message.slice(0, 500) }).where(eq(account.id, acc.id))
+      }
     }
+  } finally {
+    for (const acc of queue) syncing.delete(acc.id)
   }
 }
+
+// ponytail: in-process set, fine on one Railway instance; move to a DB column if the app scales out.
+const syncing = new Set<string>()
+export const isSyncing = (accountId: string) => syncing.has(accountId)
 
 const cryptoAccounts = (userId: string) => db.select().from(account)
   .where(and(eq(account.userId, userId), isNotNull(account.walletAddress)))
 
-/** Lazy sync on read, throttled per account. Never throws. */
+/**
+ * Lazy sync on read, throttled per account. Resolves once due accounts are claimed and
+ * marked syncing; the explorer + PTAX fetch keeps running in the background. Never throws.
+ */
 export async function syncDueAccounts(userId: string) {
   try {
     const linked = await cryptoAccounts(userId)
@@ -231,7 +245,7 @@ export async function syncDueAccounts(userId: string) {
       )).returning({ id: account.id })
       if (claimed) due.push(acc)
     }
-    if (due.length) await runSync(due, linked)
+    if (due.length) void runSync(due, linked).catch((error) => console.error('[chain-sync] syncDueAccounts:', error))
   } catch (error) {
     console.error('[chain-sync] syncDueAccounts:', error)
   }

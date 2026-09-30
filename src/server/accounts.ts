@@ -6,11 +6,14 @@ import { z } from 'zod'
 import { accountInput, updateAccountInput } from './schemas'
 import { createAccountCore, updateAccountCore } from './accounts.core'
 import { requireUser } from './session.core'
-import { syncAccountNowCore } from './chain-sync.core'
+import { isSyncing, syncAccountNowCore, syncDueAccounts } from './chain-sync.core'
 
 export const listAccounts = createServerFn({ method: 'GET' }).handler(async () => {
   const userId = await requireUser()
-  return db.select().from(account).where(eq(account.userId, userId)).orderBy(asc(account.name))
+  // Claims due crypto accounts before the select, so the page sees `syncing` on its first load.
+  await syncDueAccounts(userId)
+  const rows = await db.select().from(account).where(eq(account.userId, userId)).orderBy(asc(account.name))
+  return rows.map((row) => ({ ...row, syncing: isSyncing(row.id) }))
 })
 
 export const createAccount = createServerFn({ method: 'POST' })

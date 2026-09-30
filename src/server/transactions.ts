@@ -10,7 +10,6 @@ import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionC
 import { tagsByRule, tagsByTransaction } from './tags.core'
 import { requireUser } from './session.core'
 import { materializeDueRules } from './recurrence.core'
-import { syncDueAccounts } from './chain-sync.core'
 import { appToday } from '#/lib/dates'
 
 const idInput = (data: unknown) => String((data as { id: string }).id)
@@ -22,8 +21,6 @@ export const listTransactions = createServerFn({ method: 'GET' }).handler(async 
   // ponytail: lazy materialization on read replaces the daily cron job — idempotent
   // and catches up missed days, so rules are current whenever anyone looks.
   await materializeDueRules(appToday(), userId)
-  // Not awaited: explorer + PTAX calls take seconds; synced rows show up on the next poll.
-  void syncDueAccounts(userId)
   const rows = await db.select().from(transaction).where(eq(transaction.userId, userId)).orderBy(desc(transaction.date), desc(transaction.createdAt))
   const groupedTags = await tagsByTransaction(rows.map((row) => row.id))
   return rows.map((row) => ({ ...row, tags: groupedTags.get(row.id) ?? [] }))
