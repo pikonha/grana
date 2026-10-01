@@ -24,14 +24,14 @@ Other account columns:
 ```mermaid
 flowchart LR
   A[listAccounts] -->|awaits the claim| C[syncDueAccounts]
-  C --> D{sync_enabled and\nlast_synced_at < now − 15 min?}
+  C --> D{sync_enabled and\nlast_synced_at < now − 30 min?}
   D -->|atomic claim| E[runSync: wallets first, then ether.fi]
   C -.->|not awaited| E
   F[Sincronizar button] --> G[syncAccountNow] --> E
 ```
 
 - **On read:** `listAccounts` awaits `syncDueAccounts`, which only claims the due accounts and starts `runSync` without waiting. Accounts in a run come back with `syncing: true` (an in-process `Set`, one instance only). The Contas page spins the Sincronizar button and polls every 2 s until it clears, then refreshes transactions and faturas.
-- **Throttle and lock:** an atomic `UPDATE … WHERE last_synced_at < now − 15 min` claims each account's slot. This throttles every 15 min, including after failures, and stops concurrent reads from fetching the same account twice.
+- **Throttle and lock:** an atomic `UPDATE … WHERE last_synced_at < now − 30 min` claims each account's slot. This throttles every 30 min, including after failures, and stops concurrent reads from fetching the same account twice.
 - **Manual button:** `syncAccountNow` runs right away, even with auto-sync off.
 - **Order:** a run that includes an ether.fi card first syncs the user's auto-synced wallets. The card's top-up dedupe needs the Safe's `transfer` row to exist already. If a wallet fails, the card is skipped and gets an error.
 
@@ -95,7 +95,7 @@ The closest amount wins, then the closest date. A match gets `external_id` and `
 
 ## Configuration
 
-- `BLOCKSCOUT_API_KEY`: a free Blockscout PRO key from dev.blockscout.com (5 req/s, 100k credits/day, covers Base and OP).
+- `BLOCKSCOUT_API_KEY`: a free Blockscout PRO key from dev.blockscout.com (5 req/s, 100k credits/day). It covers OP; Base now needs a paid plan (HTTP 402), so Base calls fall back to the keyless `base.blockscout.com`.
   - Without it, sync falls back to the keyless public explorers, which allow about 10 RPC requests per hour. That is for local dev only.
   - Etherscan V2 is not an option on the free tier, which refuses Base and OP.
 - In the UI (Contas → Sincronização cripto): wallet address, origin (Carteira (Base) / ether.fi Cash (OP)), start date, and the automatic sync toggle.

@@ -24,18 +24,22 @@ const SPEND_TOPIC = '0x244f4cc0665ad7ee4709aa59b30d3ea581cecde1b0430a3f23a5dc609
 // ponytail: fixed ~5 min margin behind the node head so the indexer has caught up before the
 // cursor skips past a block; an indexer lagging longer loses those logs (read the indexed head then).
 const CONFIRMATIONS = 150
-const THROTTLE_MS = 15 * 60_000
+const THROTTLE_MS = 30 * 60_000
 const PAGE = 1000
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function getJson(chainId: number, what: string, url: string) {
+/** Tries `urls` in order, moving on only on 402: the PRO free plan refuses "featured" chains (Base, since 2026-10). */
+async function getJson(chainId: number, what: string, urls: string[]) {
   // ponytail: fixed pacing + one retry on 429 keeps us under the free rate limit.
   let res: Response | undefined
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await sleep(attempt ? 2_000 : 250)
-    res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (res.status !== 429) break
+  for (const url of urls) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await sleep(attempt ? 2_000 : 250)
+      res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+      if (res.status !== 429) break
+    }
+    if (res!.status !== 402) break
   }
   if (!res?.ok) throw new Error(`explorer ${chainId} ${what}: HTTP ${res?.status}`)
   return res.json()
@@ -44,10 +48,10 @@ async function getJson(chainId: number, what: string, url: string) {
 /** Etherscan-compatible RPC (`module=…&action=…`). */
 async function rpc(chainId: number, params: Record<string, string>) {
   const key = process.env.BLOCKSCOUT_API_KEY
-  const url = key
-    ? `https://api.blockscout.com/v2/api?${new URLSearchParams({ chain_id: String(chainId), ...params, apikey: key })}`
-    : `${INSTANCES[chainId]}/api?${new URLSearchParams(params)}`
-  const body = await getJson(chainId, params.action, url)
+  const keyless = `${INSTANCES[chainId]}/api?${new URLSearchParams(params)}`
+  const body = await getJson(chainId, params.action, key
+    ? [`https://api.blockscout.com/v2/api?${new URLSearchParams({ chain_id: String(chainId), ...params, apikey: key })}`, keyless]
+    : [keyless])
   if ('jsonrpc' in body) return body.result
   if (body.status === '1') return body.result
   if (/^no (logs|records|transactions) found/i.test(body.message)) return []
@@ -57,10 +61,10 @@ async function rpc(chainId: number, params: Record<string, string>) {
 /** REST v2 (`/api/v2/…`). */
 async function rest(chainId: number, path: string, params: Record<string, string>) {
   const key = process.env.BLOCKSCOUT_API_KEY
-  const url = key
-    ? `https://api.blockscout.com/${chainId}/api/v2${path}?${new URLSearchParams({ ...params, apikey: key })}`
-    : `${INSTANCES[chainId]}/api/v2${path}?${new URLSearchParams(params)}`
-  return getJson(chainId, path.split('/').at(-1)!, url)
+  const keyless = `${INSTANCES[chainId]}/api/v2${path}?${new URLSearchParams(params)}`
+  return getJson(chainId, path.split('/').at(-1)!, key
+    ? [`https://api.blockscout.com/${chainId}/api/v2${path}?${new URLSearchParams({ ...params, apikey: key })}`, keyless]
+    : [keyless])
 }
 
 /** All logs in [fromBlock, toBlock]; a full page re-reads from its last block (ascending order). */
