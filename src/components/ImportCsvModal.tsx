@@ -20,7 +20,7 @@ export function ImportCsvModal({
 }: {
   transactions: TransactionRow[];
   accounts: AccountOption[];
-  onImport: (rows: { type: "earn" | "expend"; amount: number; date: string; tag_names?: string[]; account_id?: string; note?: string }[]) => Promise<{ count: number }>;
+  onImport: (rows: { type: "earn" | "expend"; amount: number; date: string; tag_names?: string[]; account_id: string; note?: string }[]) => Promise<{ count: number }>;
   onCreateAccount: (name: string) => Promise<string>;
 }) {
   const [open, setOpen] = useState(false);
@@ -98,9 +98,8 @@ export function ImportCsvModal({
       const type = cents < 0 ? "expend" : "earn";
       const amount = Math.abs(cents);
       let error: string | undefined;
-      if (conta && !accountNormMap.has(normalizeForMatch(conta))) {
-        error = "Conta desconhecida";
-      }
+      if (!conta) error = "Conta obrigatória";
+      else if (!accountNormMap.has(normalizeForMatch(conta))) error = "Conta desconhecida";
       const key = dupKey(date, type, amount);
       const isDup = existingDups.has(key) || fileDups.has(key);
       fileDups.add(key);
@@ -140,7 +139,8 @@ export function ImportCsvModal({
         amount: r.amount,
         date: r.date,
         tag_names: r.categoria ? [r.categoria] : undefined,
-        account_id: r.conta ? accountNormMap.get(normalizeForMatch(r.conta)) : undefined,
+        // canSubmit guarantees every valid row has a known conta.
+        account_id: accountNormMap.get(normalizeForMatch(r.conta))!,
         note: r.nota || undefined,
       }));
       await onImport(payload);
@@ -183,7 +183,7 @@ export function ImportCsvModal({
                   <tr><td className="px-2 py-1">data</td><td className="px-2 py-1">Sim</td><td className="px-2 py-1">2026-07-01 ou 01/07/2026 (DD/MM)</td></tr>
                   <tr><td className="px-2 py-1">valor</td><td className="px-2 py-1">Sim</td><td className="px-2 py-1">1.234,56 ou 1234.56 (+ receita, - despesa)</td></tr>
                   <tr><td className="px-2 py-1">categoria</td><td className="px-2 py-1">Não</td><td className="px-2 py-1">Nome (criado se não existir)</td></tr>
-                  <tr><td className="px-2 py-1">conta</td><td className="px-2 py-1">Não</td><td className="px-2 py-1">Nome (deve existir)</td></tr>
+                  <tr><td className="px-2 py-1">conta</td><td className="px-2 py-1">Sim</td><td className="px-2 py-1">Nome (deve existir)</td></tr>
                   <tr><td className="px-2 py-1">nota</td><td className="px-2 py-1">Não</td><td className="px-2 py-1">Texto livre</td></tr>
                 </tbody>
               </table>

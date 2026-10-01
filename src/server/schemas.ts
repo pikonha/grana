@@ -15,7 +15,8 @@ export const transactionInput = z.object({
   type: z.enum(['earn', 'expend']), amount: cents.positive(), date: isoDate,
   tag_ids: z.array(z.string().uuid()).max(20).optional(),
   category_id: z.string().uuid().optional(),
-  account_id: z.string().uuid().optional(),
+  // Every transaction belongs to an account.
+  account_id: z.string().uuid(),
   note: z.string().max(500).optional(),
   paid: z.boolean().optional(),
 })
@@ -28,6 +29,12 @@ export const updateTransactionInput = transactionInput.extend({
   id: z.string().uuid(),
 }).omit({ paid: true })
 export type UpdateTransactionInput = z.infer<typeof updateTransactionInput>
+
+/** Edits the rule itself: applies to occurrences not generated yet. The schedule (date/interval) stays. */
+export const updateRecurrenceRuleInput = transactionInput.extend({
+  id: z.string().uuid(),
+}).omit({ paid: true, date: true })
+export type UpdateRecurrenceRuleInput = z.infer<typeof updateRecurrenceRuleInput>
 
 export const createTransactionInput = transactionInput.extend({
   installments: z.object({ count: z.number().int().min(2).max(360) }).optional(),
@@ -89,7 +96,7 @@ export function inputTagIds(input: { tag_ids?: string[]; category_id?: string })
 export const importTransactionsInput = z.array(z.object({
   type: z.enum(['earn', 'expend']), amount: cents.positive(), date: isoDate,
   tag_names: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
-  account_id: z.string().uuid().optional(),
+  account_id: z.string().uuid(),
   note: z.string().max(500).optional(),
   paid: z.boolean().optional(),
 })).min(1).max(1000)

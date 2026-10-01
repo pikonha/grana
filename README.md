@@ -31,7 +31,7 @@ HERMES_WEBHOOK_SECRET=...
 HERMES_USER_ID=better-auth-user-id-owned-by-hermes-writes
 ```
 
-`HERMES_USER_ID` is the Better Auth user ID assigned to external transaction writes. The webhook contract uses `account_id` and optional `tag_ids`; legacy `category_id` is still accepted as one tag. `card_id` is no longer accepted.
+`HERMES_USER_ID` is the Better Auth user ID assigned to external transaction writes. The webhook contract requires `account_id` (every transaction belongs to an account) and accepts optional `tag_ids`; legacy `category_id` is still accepted as one tag. `card_id` is no longer accepted.
 
 ## Commands
 

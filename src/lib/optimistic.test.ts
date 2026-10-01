@@ -68,11 +68,11 @@ describe("optimistic finance rows", () => {
 
   it("keeps newest transactions first", () => {
     const old = optimisticTransaction(
-      { type: "earn", amount: 1, date: "2026-06-01" },
+      { type: "earn", amount: 1, date: "2026-06-01", account_id: "a" },
       "old",
     );
     const recent = optimisticTransaction(
-      { type: "earn", amount: 1, date: "2026-07-01" },
+      { type: "earn", amount: 1, date: "2026-07-01", account_id: "a" },
       "recent",
     );
 

@@ -505,6 +505,11 @@ function Accounts() {
           <CardTitle>Todas as contas</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          {remove.error && (
+            <p role="alert" className="text-sm text-destructive">
+              {remove.error.message}
+            </p>
+          )}
           {data.map((a) => {
             const cardFaturas = faturas.filter((f) => f.accountId === a.id);
             return (
@@ -549,11 +554,7 @@ function Accounts() {
                   size="sm"
                   onClick={() => {
                     if (
-                      window.confirm(
-                        a.kind === "credit_card"
-                          ? `Excluir "${a.name}"? Isso também apaga as compras parceladas deste cartão.`
-                          : `Excluir "${a.name}"?`,
-                      )
+                      window.confirm(`Excluir "${a.name}"?`)
                     )
                       remove.mutate(a.id);
                   }}

@@ -13,12 +13,14 @@ import {
   listRecurrenceRules,
   listTransactions,
   setTransactionPaid,
+  updateRecurrenceRule,
   updateTransaction,
   updateTransfer,
 } from "#/server/transactions";
 import type {
   CreateTransactionInput,
   TransferInput,
+  UpdateRecurrenceRuleInput,
   UpdateTransactionInput,
   UpdateTransferInput,
 } from "#/server/schemas";
@@ -112,6 +114,7 @@ type DisplayRow =
       installmentLabel: null;
       isRecurring: boolean;
       pending: boolean;
+      rule: RecurrenceRuleRow;
       onDelete: () => void;
     };
 
@@ -315,6 +318,11 @@ function Transactions() {
     onSettled: refresh,
   });
 
+  const editRule = useMutation({
+    mutationFn: (data: UpdateRecurrenceRuleInput) => updateRecurrenceRule({ data }),
+    onSettled: refresh,
+  });
+
   const setPaid = useMutation({
     mutationFn: (data: { id: string; paid: boolean }) => setTransactionPaid({ data }),
     onMutate: async ({ id, paid }) => {
@@ -392,13 +400,13 @@ function Transactions() {
 
   const scheduled = useMemo(
     () =>
-      filterAccount
-        ? []
-        : recurrenceRules.flatMap((rule) =>
-            scheduledDatesInMonth(rule.interval, rule.nextRun, activeMonth).map(
-              (date) => ({ rule, date }),
-            ),
+      recurrenceRules
+        .filter((rule) => !filterAccount || rule.accountId === filterAccount)
+        .flatMap((rule) =>
+          scheduledDatesInMonth(rule.interval, rule.nextRun, activeMonth).map(
+            (date) => ({ rule, date }),
           ),
+        ),
     [activeMonth, recurrenceRules, filterAccount],
   );
 
@@ -466,12 +474,13 @@ function Transactions() {
       amount: rule.amount,
       note: rule.note,
       tags: rule.tags,
-      account: undefined,
+      account: accountName.get(rule.accountId ?? ""),
       counterAccount: null,
       badges: [],
       installmentLabel: null,
       isRecurring: true,
       pending: removeRule.isPending,
+      rule,
       onDelete: () => {
         if (
           window.confirm(
@@ -569,13 +578,13 @@ function Transactions() {
             className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (amount === null || amount <= 0) return;
+              if (amount === null || amount <= 0 || !accountId) return;
               create.mutate({
                 type,
                 amount,
                 date,
                 tag_ids: tagIds.length ? tagIds : undefined,
-                account_id: accountId || undefined,
+                account_id: accountId,
                 note: note || undefined,
                 paid: date <= localDateKey(),
                 recurrence:
@@ -640,16 +649,14 @@ function Transactions() {
             </Field>
             <Field label="Conta">
               <Select
-                value={accountId || EMPTY_SELECT_VALUE}
-                onValueChange={(value) =>
-                  setAccountId(value === EMPTY_SELECT_VALUE ? "" : value)
-                }
+                value={accountId}
+                onValueChange={setAccountId}
+                required
               >
                 <SelectTrigger aria-label="Conta">
-                  <SelectValue />
+                  <SelectValue placeholder="Escolha uma conta" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={EMPTY_SELECT_VALUE}>Nenhuma</SelectItem>
                   {accounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
                       {account.name} · {kindLabel(account.kind)}
@@ -920,6 +927,34 @@ function Transactions() {
                               }
                             />
                           )}
+                        {row.kind === "scheduled" && row.rule.type !== "transfer" && (
+                          <TransactionModal
+                            type={row.rule.type}
+                            recurring
+                            accounts={accounts}
+                            categories={categories}
+                            initialTransaction={{ ...row.rule, type: row.rule.type, date: row.rule.nextRun }}
+                            onUpdate={({ id, type, amount, tag_ids, account_id, note }) =>
+                              editRule.mutateAsync({ id, type, amount, tag_ids, account_id, note })
+                            }
+                            onCreateCategory={async (name, color) =>
+                              (await createCategoryMutation.mutateAsync({ name, color })).id
+                            }
+                            onDeleteCategory={removeCategory}
+                            trigger={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Editar recorrência"
+                                className="size-8"
+                                disabled={row.pending}
+                              >
+                                <Pencil className="size-4" />
+                              </Button>
+                            }
+                          />
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"

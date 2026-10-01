@@ -4,7 +4,7 @@ import { account, installmentPlan, recurrenceRule, recurrenceRuleTag, transactio
 import { addMonths, splitInstallments } from '#/lib/installments'
 import { assertMoney, paidByDate } from '#/lib/money'
 import { transferNote } from '#/lib/transaction-labels'
-import { inputTagIds, type TransactionInput, type TransferInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
+import { inputTagIds, type TransactionInput, type TransferInput, type UpdateRecurrenceRuleInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
 import { assertOwnedTags } from './tags.core'
 
 export async function assertOwnedAccounts(userId: string, ids: (string | null | undefined)[]) {
@@ -28,7 +28,7 @@ export async function createTransactionCore(userId: string, input: TransactionIn
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(transaction).values({
       userId, type: input.type, amount: input.amount, date: input.date,
-      accountId: input.account_id ?? null, note: input.note ?? null,
+      accountId: input.account_id, note: input.note ?? null,
       paid: input.paid ?? paidByDate(input.date, todayISO),
     }).returning({ id: transaction.id })
     if (tagIds.length) await tx.insert(transactionTag).values(transactionTagRows(row.id, tagIds))
@@ -46,7 +46,7 @@ export async function updateTransactionCore(userId: string, input: UpdateTransac
       type: input.type,
       amount: input.amount,
       date: input.date,
-      accountId: input.account_id ?? null,
+      accountId: input.account_id,
       note: input.note ?? null,
     }).where(and(
       eq(transaction.id, input.id),
@@ -120,8 +120,25 @@ export async function createRecurrenceRuleCore(userId: string, input: Transactio
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(recurrenceRule).values({
       userId, type: input.type, amount: input.amount, interval: input.recurrence.interval,
-      nextRun: input.date, accountId: input.account_id ?? null, note: input.note ?? null,
+      nextRun: input.date, accountId: input.account_id, note: input.note ?? null,
     }).returning({ id: recurrenceRule.id })
+    if (tagIds.length) await tx.insert(recurrenceRuleTag).values(recurrenceTagRows(row.id, tagIds))
+    return { id: row.id }
+  })
+}
+
+export async function updateRecurrenceRuleCore(userId: string, input: UpdateRecurrenceRuleInput) {
+  assertMoney(input.amount)
+  const tagIds = inputTagIds(input)
+  await assertOwnedTags(userId, tagIds)
+  await assertOwnedAccounts(userId, [input.account_id])
+  return db.transaction(async (tx) => {
+    const [row] = await tx.update(recurrenceRule).set({
+      type: input.type, amount: input.amount, accountId: input.account_id, note: input.note ?? null,
+    }).where(and(eq(recurrenceRule.id, input.id), eq(recurrenceRule.userId, userId)))
+      .returning({ id: recurrenceRule.id })
+    if (!row) throw new Error('Recurrence rule not found')
+    await tx.delete(recurrenceRuleTag).where(eq(recurrenceRuleTag.recurrenceRuleId, row.id))
     if (tagIds.length) await tx.insert(recurrenceRuleTag).values(recurrenceTagRows(row.id, tagIds))
     return { id: row.id }
   })

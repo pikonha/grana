@@ -1,12 +1,12 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { db } from '#/db/index'
-import { account, installmentPlan, recurrenceRule, tag, transaction, transactionTag, type RecurrenceRule, type Tag, type Transaction } from '#/db/schema'
+import { installmentPlan, recurrenceRule, tag, transaction, transactionTag, type RecurrenceRule, type Tag, type Transaction } from '#/db/schema'
 import { assertMoney, paidByDate } from '#/lib/money'
 import { normalizeForMatch } from '#/lib/csv'
 import { tagColorForIndex } from '#/lib/tag-colors'
-import { createTransactionInput, importTransactionsInput, transactionPaidInput, transferInput, updateTransactionInput, updateTransferInput } from './schemas'
-import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateTransactionCore, updateTransferCore } from './transactions.core'
+import { createTransactionInput, importTransactionsInput, transactionPaidInput, transferInput, updateRecurrenceRuleInput, updateTransactionInput, updateTransferInput } from './schemas'
+import { assertOwnedAccounts, createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateRecurrenceRuleCore, updateTransactionCore, updateTransferCore } from './transactions.core'
 import { tagsByRule, tagsByTransaction } from './tags.core'
 import { requireUser } from './session.core'
 import { materializeDueRules } from './recurrence.core'
@@ -78,6 +78,9 @@ export const listRecurrenceRules = createServerFn({ method: 'GET' }).handler(asy
   const groupedTags = await tagsByRule(rows.map((row) => row.id))
   return rows.map((row) => ({ ...row, tags: groupedTags.get(row.id) ?? [] }))
 })
+export const updateRecurrenceRule = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => updateRecurrenceRuleInput.parse(data))
+  .handler(async ({ data }) => updateRecurrenceRuleCore(await requireUser(), data))
 export const deleteRecurrenceRule = createServerFn({ method: 'POST' }).validator(idInput).handler(async ({ data: id }) => {
   const userId = await requireUser()
   await db.delete(recurrenceRule).where(and(eq(recurrenceRule.id, id), eq(recurrenceRule.userId, userId)))
@@ -89,11 +92,7 @@ export const importTransactions = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const userId = await requireUser()
     data.forEach((row) => assertMoney(row.amount))
-    const accountIds = [...new Set(data.map((row) => row.account_id).filter(Boolean) as string[])]
-    if (accountIds.length) {
-      const ownedAccounts = await db.select({ id: account.id }).from(account).where(and(eq(account.userId, userId), inArray(account.id, accountIds)))
-      if (ownedAccounts.length !== accountIds.length) throw new Error('One or more accounts do not exist')
-    }
+    await assertOwnedAccounts(userId, data.map((row) => row.account_id))
     const uniqueTagNames = [...new Set(data.flatMap((row) => row.tag_names ?? []))]
     const tagMap = new Map<string, string>()
     if (uniqueTagNames.length) {
@@ -121,7 +120,7 @@ export const importTransactions = createServerFn({ method: 'POST' })
     return db.transaction(async (tx) => {
       const inserted = await tx.insert(transaction).values(data.map((row) => ({
         userId, type: row.type, amount: row.amount, date: row.date,
-        accountId: row.account_id ?? null, note: row.note ?? null,
+        accountId: row.account_id, note: row.note ?? null,
         paid: row.paid ?? paidByDate(row.date, todayISO),
       }))).returning({ id: transaction.id })
       const links: { transactionId: string; tagId: string }[] = []

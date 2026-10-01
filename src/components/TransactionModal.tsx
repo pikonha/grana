@@ -19,7 +19,6 @@ import {
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import {
-  EMPTY_SELECT_VALUE,
   Select,
   SelectContent,
   SelectItem,
@@ -57,6 +56,8 @@ type TransactionModalProps = {
   onUpdate?: (data: UpdateTransactionInput) => Promise<unknown>;
   onCreateCategory: (name: string, color: string) => Promise<string>;
   onDeleteCategory?: CategorySelectProps["onDelete"];
+  /** Editing a recurrence rule: no date (the schedule stays), applies to future occurrences. */
+  recurring?: boolean;
 };
 
 const today = () => localDateKey();
@@ -71,6 +72,7 @@ export function TransactionModal({
   onUpdate,
   onCreateCategory,
   onDeleteCategory,
+  recurring = false,
 }: TransactionModalProps) {
   const [open, setOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<"earn" | "expend">(
@@ -143,14 +145,18 @@ export function TransactionModal({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {isEditing
+            {recurring
+              ? "Editar recorrência"
+              : isEditing
               ? "Editar transação"
               : type === "earn"
                 ? "Adicionar receita"
                 : "Adicionar despesa"}
           </DialogTitle>
           <DialogDescription>
-            {isEditing
+            {recurring
+              ? "Vale para as próximas ocorrências. As já lançadas não mudam."
+              : isEditing
               ? "Atualize os dados desta transação."
               : `Registre ${
                   type === "earn" ? "dinheiro recebido" : "dinheiro gasto"
@@ -162,6 +168,10 @@ export function TransactionModal({
           onSubmit={async (event) => {
             event.preventDefault();
             if (amount === null || amount <= 0) return;
+            if (!accountId) {
+              setError("Escolha uma conta");
+              return;
+            }
 
             setIsSaving(true);
             setError("");
@@ -174,7 +184,7 @@ export function TransactionModal({
                   amount,
                   date,
                   tag_ids: tagIds.length ? tagIds : undefined,
-                  account_id: accountId || undefined,
+                  account_id: accountId,
                   note: note || undefined,
                 });
               } else {
@@ -184,7 +194,7 @@ export function TransactionModal({
                   amount,
                   date,
                   tag_ids: tagIds.length ? tagIds : undefined,
-                  account_id: accountId || undefined,
+                  account_id: accountId,
                   note: note || undefined,
                   paid: date <= localDateKey(),
                   recurrence:
@@ -246,26 +256,26 @@ export function TransactionModal({
                 autoFocus
               />
             </Field>
-            <Field label="Data" htmlFor="transaction-date">
-              <DatePicker
-                id="transaction-date"
-                value={date}
-                onChange={setDate}
-                required
-              />
-            </Field>
+            {!recurring && (
+              <Field label="Data" htmlFor="transaction-date">
+                <DatePicker
+                  id="transaction-date"
+                  value={date}
+                  onChange={setDate}
+                  required
+                />
+              </Field>
+            )}
             <Field label="Conta" htmlFor="transaction-account">
               <Select
-                value={accountId || EMPTY_SELECT_VALUE}
-                onValueChange={(value) =>
-                  setAccountId(value === EMPTY_SELECT_VALUE ? "" : value)
-                }
+                value={accountId}
+                onValueChange={setAccountId}
+                required
               >
                 <SelectTrigger id="transaction-account">
-                  <SelectValue />
+                  <SelectValue placeholder="Escolha uma conta" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={EMPTY_SELECT_VALUE}>Nenhuma</SelectItem>
                 {accounts.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
                     {account.name} ·{" "}

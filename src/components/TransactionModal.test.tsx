@@ -149,6 +149,10 @@ describe("TransactionModal", () => {
     fireEvent.change(within(dialog).getByLabelText("Valor (R$)"), {
       target: { value: "1000" },
     });
+    fireEvent.click(within(dialog).getByLabelText("Conta"));
+    fireEvent.click(
+      screen.getByRole("option", { name: "Checking · conta bancária" })
+    );
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Adicionar transação" })
     );
@@ -234,7 +238,7 @@ describe("TransactionModal", () => {
     render(
       <TransactionModal
         type="expend"
-        accounts={[]}
+        accounts={accounts}
         categories={[]}
         onCreate={vi.fn().mockRejectedValue(new Error("Save failed"))}
         onCreateCategory={vi.fn()}
@@ -245,6 +249,10 @@ describe("TransactionModal", () => {
     fireEvent.change(within(dialog).getByLabelText("Valor (R$)"), {
       target: { value: "100" },
     });
+    fireEvent.click(within(dialog).getByLabelText("Conta"));
+    fireEvent.click(
+      screen.getByRole("option", { name: "Checking · conta bancária" })
+    );
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Adicionar transação" })
     );
