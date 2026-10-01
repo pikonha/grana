@@ -83,14 +83,15 @@ function Dashboard() {
     ): transaction is typeof transaction & { type: "earn" | "expend" } =>
       transaction.type !== "transfer"
   );
+  const paidStatsTransactions = statsTransactions.filter((tx) => tx.paid);
   const monthKey = new Date().toISOString().slice(0, 7);
-  const monthTransactions = statsTransactions.filter(
+  const monthTransactions = paidStatsTransactions.filter(
     (transaction) =>
       transaction.date.startsWith(monthKey) && inAccount(transaction)
   );
   const balance = accountId
     ? prepaidBalanceOf(accountId, transactions)
-    : balanceOf(statsTransactions);
+    : balanceOf(paidStatsTransactions);
   const sumByType = (type: "earn" | "expend") =>
     monthTransactions
       .filter((transaction) => transaction.type === type)

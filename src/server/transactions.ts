@@ -2,10 +2,10 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account, installmentPlan, recurrenceRule, tag, transaction, transactionTag, type RecurrenceRule, type Tag, type Transaction } from '#/db/schema'
-import { assertMoney } from '#/lib/money'
+import { assertMoney, paidByDate } from '#/lib/money'
 import { normalizeForMatch } from '#/lib/csv'
 import { tagColorForIndex } from '#/lib/tag-colors'
-import { createTransactionInput, importTransactionsInput, transferInput, updateTransactionInput, updateTransferInput } from './schemas'
+import { createTransactionInput, importTransactionsInput, transactionPaidInput, transferInput, updateTransactionInput, updateTransferInput } from './schemas'
 import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateTransactionCore, updateTransferCore } from './transactions.core'
 import { tagsByRule, tagsByTransaction } from './tags.core'
 import { requireUser } from './session.core'
@@ -117,10 +117,12 @@ export const importTransactions = createServerFn({ method: 'POST' })
         for (const t of created) tagMap.set(t.name, t.id)
       }
     }
+    const todayISO = new Date().toISOString().slice(0, 10)
     return db.transaction(async (tx) => {
       const inserted = await tx.insert(transaction).values(data.map((row) => ({
         userId, type: row.type, amount: row.amount, date: row.date,
         accountId: row.account_id ?? null, note: row.note ?? null,
+        paid: row.paid ?? paidByDate(row.date, todayISO),
       }))).returning({ id: transaction.id })
       const links: { transactionId: string; tagId: string }[] = []
       for (let i = 0; i < data.length; i++) {
@@ -133,4 +135,12 @@ export const importTransactions = createServerFn({ method: 'POST' })
       if (links.length) await tx.insert(transactionTag).values(links)
       return { count: inserted.length }
     })
+  })
+
+export const setTransactionPaid = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => transactionPaidInput.parse(data))
+  .handler(async ({ data }) => {
+    const userId = await requireUser()
+    await db.update(transaction).set({ paid: data.paid }).where(and(eq(transaction.id, data.id), eq(transaction.userId, userId)))
+    return { success: true }
   })

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, RefreshCw, ThumbsUp, Trash2 } from "lucide-react";
 import { listAccounts } from "#/server/accounts";
 import { createCategory, listCategories } from "#/server/categories";
 import {
@@ -12,6 +12,7 @@ import {
   listInstallmentPlans,
   listRecurrenceRules,
   listTransactions,
+  setTransactionPaid,
   updateTransaction,
   updateTransfer,
 } from "#/server/transactions";
@@ -35,6 +36,7 @@ import {
   optimisticUpdatedTransaction,
   optimisticTransfer,
 } from "#/lib/optimistic";
+import { isPaymentTrackable, signedAmount } from "#/lib/money";
 import { localMonthKey, scheduledDatesInMonth } from "#/lib/recurrence";
 import { transferNote } from "#/lib/transaction-labels";
 import { CategorySelect } from "@/components/CategorySelect";
@@ -92,6 +94,7 @@ type DisplayRow =
       installmentLabel: string | null;
       isRecurring: boolean;
       pending: boolean;
+      paid: boolean;
       tx: TransactionRow;
       onDelete: () => void;
     }
@@ -294,6 +297,22 @@ function Transactions() {
     onSettled: refresh,
   });
 
+  const setPaid = useMutation({
+    mutationFn: (data: { id: string; paid: boolean }) => setTransactionPaid({ data }),
+    onMutate: async ({ id, paid }) => {
+      await qc.cancelQueries({ queryKey: financeQueryKeys.transactions });
+      const previous = qc.getQueryData<TransactionRow[]>(financeQueryKeys.transactions);
+      qc.setQueryData<TransactionRow[]>(
+        financeQueryKeys.transactions,
+        (current = []) => current.map((tx) => (tx.id === id ? { ...tx, paid } : tx)),
+      );
+      return { previous };
+    },
+    onError: (_error, _data, context) =>
+      qc.setQueryData(financeQueryKeys.transactions, context?.previous),
+    onSettled: refresh,
+  });
+
   const transfer = useMutation({
     mutationFn: (data: TransferInput) => createTransfer({ data }),
     onMutate: async (data) => {
@@ -370,6 +389,11 @@ function Transactions() {
     [accounts],
   );
 
+  const accountKindById = useMemo(
+    () => (id: string) => accounts.find((a) => a.id === id)?.kind,
+    [accounts],
+  );
+
   const planCount = useMemo(
     () => new Map(plans.map((plan) => [plan.id, plan.count])),
     [plans],
@@ -412,6 +436,7 @@ function Transactions() {
         : null,
       isRecurring: Boolean(tx.recurrenceRuleId),
       pending: tx.userId === "optimistic",
+      paid: tx.paid,
       tx,
       onDelete: () => removeTx.mutate(tx.id),
     })),
@@ -455,6 +480,20 @@ function Transactions() {
     return () => observer.disconnect();
   }, [hasMore, visible]);
 
+  // Signed net of the month's unpaid entries, same convention as "Resultado do mês".
+  // Gated on row count, not on the total: an unpaid earn and expend can cancel to zero
+  // while entries are still pending.
+  const pendingRows = monthTx.filter(
+    (tx) =>
+      tx.type !== "transfer" &&
+      isPaymentTrackable({ type: tx.type, accountId: tx.accountId }, accountKindById) &&
+      !tx.paid,
+  );
+  const pendingTotal = pendingRows.reduce(
+    (sum, tx) => sum + signedAmount(tx.type as "earn" | "expend", tx.amount),
+    0,
+  );
+
   return (
     <main className="page-wrap rise-in py-6 sm:py-10">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -486,6 +525,7 @@ function Transactions() {
                 tag_ids: tagIds.length ? tagIds : undefined,
                 account_id: accountId || undefined,
                 note: note || undefined,
+                paid: date <= localDateKey(),
                 recurrence:
                   repeat !== "none" && repeat !== "installments"
                     ? { interval: repeat }
@@ -616,7 +656,15 @@ function Transactions() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Todas as transações</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <CardTitle>Todas as transações</CardTitle>
+            {pendingRows.length > 0 && (
+              <div className="text-sm">
+                <span className="text-muted-foreground">Pendente: </span>
+                <span className="font-bold tabular-nums">{money(pendingTotal)}</span>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="relative mb-4 flex flex-wrap items-center justify-center gap-4">
@@ -668,7 +716,7 @@ function Transactions() {
             </TableHeader>
             <TableBody>
               {pageRows.map((row) => (
-                <TableRow key={row.key}>
+                <TableRow key={row.key} className={row.kind === "transaction" && !row.paid ? "opacity-60" : ""}>
                     <TableCell className="align-top tabular-nums">
                       <div className="font-medium">{dayLabel(row.date)}</div>
                       <div className="text-xs capitalize text-muted-foreground">
@@ -739,6 +787,26 @@ function Transactions() {
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="flex justify-end gap-2">
+                        {row.kind === "transaction" &&
+                          isPaymentTrackable(
+                            { type: row.tx.type, accountId: row.tx.accountId },
+                            accountKindById,
+                          ) && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={row.paid ? "Marcar como não pago" : "Marcar como pago"}
+                              title={row.paid ? "Marcar como não pago" : "Marcar como pago"}
+                              className={`size-8 ${row.paid ? "" : "text-muted-foreground"}`}
+                              disabled={row.pending}
+                              onClick={() => setPaid.mutate({ id: row.tx.id, paid: !row.paid })}
+                            >
+                              <ThumbsUp
+                                className={`size-4 ${row.paid ? "fill-current" : ""}`}
+                              />
+                            </Button>
+                          )}
                         {row.kind === "transaction" &&
                           row.tx.type === "transfer" && (
                             <TransferModal

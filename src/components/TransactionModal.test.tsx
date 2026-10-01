@@ -85,6 +85,7 @@ describe("TransactionModal", () => {
         tag_ids: [categories[0].id],
         account_id: accounts[0].id,
         note: "Paycheck",
+        paid: true,
         recurrence: undefined,
         installments: undefined,
       })

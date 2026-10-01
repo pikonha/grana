@@ -184,6 +184,7 @@ export function TransactionModal({
                   tag_ids: tagIds.length ? tagIds : undefined,
                   account_id: accountId || undefined,
                   note: note || undefined,
+                  paid: date <= localDateKey(),
                   recurrence:
                     repeat !== "none" && repeat !== "installments"
                       ? { interval: repeat }

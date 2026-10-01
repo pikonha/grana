@@ -17,6 +17,7 @@ export const transactionInput = z.object({
   category_id: z.string().uuid().optional(),
   account_id: z.string().uuid().optional(),
   note: z.string().max(500).optional(),
+  paid: z.boolean().optional(),
 })
 export type TransactionInput = z.infer<typeof transactionInput>
 
@@ -25,7 +26,7 @@ export const webhookTransactionInput = transactionInput.strict()
 
 export const updateTransactionInput = transactionInput.extend({
   id: z.string().uuid(),
-})
+}).omit({ paid: true })
 export type UpdateTransactionInput = z.infer<typeof updateTransactionInput>
 
 export const createTransactionInput = transactionInput.extend({
@@ -52,6 +53,7 @@ export type UpdateTransferInput = z.infer<typeof updateTransferInput>
 
 export const faturaPaymentInput = z.object({ account_id: z.string().uuid(), cycle_key: isoDate, paid_at: isoDate.optional() })
 export type FaturaPaymentInput = z.infer<typeof faturaPaymentInput>
+export const transactionPaidInput = z.object({ id: z.string().uuid(), paid: z.boolean() })
 
 export const categoryInput = z.object({
   name: z.string().trim().min(1).max(100),
@@ -89,5 +91,6 @@ export const importTransactionsInput = z.array(z.object({
   tag_names: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   account_id: z.string().uuid().optional(),
   note: z.string().max(500).optional(),
+  paid: z.boolean().optional(),
 })).min(1).max(1000)
 export type ImportTransactionsInput = z.infer<typeof importTransactionsInput>

@@ -55,3 +55,19 @@ export function prepaidBalanceOf(
     return acc
   }, 0)
 }
+
+/** Seed for a new transaction's `paid`: anything not in the future counts as settled. */
+export function paidByDate(date: string, today: string): boolean {
+  return date <= today
+}
+
+/** Predicate: is this transaction trackable for payment status? */
+export function isPaymentTrackable(
+  tx: { type: 'earn' | 'expend' | 'transfer'; accountId: string | null },
+  accountKindById: (id: string) => 'credit_card' | 'bank_account' | undefined,
+): boolean {
+  if (tx.type === 'transfer') return false
+  if (tx.accountId === null) return true
+  const kind = accountKindById(tx.accountId)
+  return kind === 'bank_account'
+}

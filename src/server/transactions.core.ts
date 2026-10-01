@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account, installmentPlan, recurrenceRule, recurrenceRuleTag, transaction, transactionTag } from '#/db/schema'
 import { addMonths, splitInstallments } from '#/lib/installments'
-import { assertMoney } from '#/lib/money'
+import { assertMoney, paidByDate } from '#/lib/money'
 import { transferNote } from '#/lib/transaction-labels'
 import { inputTagIds, type TransactionInput, type TransferInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
 import { assertOwnedTags } from './tags.core'
@@ -24,10 +24,12 @@ export async function createTransactionCore(userId: string, input: TransactionIn
   const tagIds = inputTagIds(input)
   await assertOwnedTags(userId, tagIds)
   await assertOwnedAccounts(userId, [input.account_id])
+  const todayISO = new Date().toISOString().slice(0, 10)
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(transaction).values({
       userId, type: input.type, amount: input.amount, date: input.date,
       accountId: input.account_id ?? null, note: input.note ?? null,
+      paid: input.paid ?? paidByDate(input.date, todayISO),
     }).returning({ id: transaction.id })
     if (tagIds.length) await tx.insert(transactionTag).values(transactionTagRows(row.id, tagIds))
     return { id: row.id }
