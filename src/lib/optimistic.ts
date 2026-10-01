@@ -46,6 +46,8 @@ export function optimisticTransaction(
     // Both call sites send `paid` (client clock); `true` mirrors the column default.
     paid: input.paid ?? true,
     createdAt: new Date(),
+    externalId: null,
+    usdAmount: null,
     tags: [],
   };
 }
@@ -53,6 +55,7 @@ export function optimisticTransaction(
 export function optimisticUpdatedTransaction(
   current: TransactionRow,
   input: UpdateTransactionInput,
+  allTags: Tag[] = current.tags,
 ): TransactionRow {
   return {
     ...current,
@@ -61,6 +64,9 @@ export function optimisticUpdatedTransaction(
     date: input.date,
     accountId: input.account_id ?? null,
     note: input.note ?? null,
+    tags: input.tag_ids
+      ? allTags.filter((tag) => input.tag_ids?.includes(tag.id))
+      : current.tags,
     paid: current.paid,
   };
 }
@@ -93,6 +99,10 @@ export function optimisticAccount(
     closingDay?: number;
     dueDay?: number;
     prepaid?: boolean;
+    walletAddress?: string | null;
+    syncKind?: NonNullable<Account["syncKind"]>;
+    syncEnabled?: boolean;
+    syncSince?: string;
   },
   id = optimisticId(),
 ): Account {
@@ -107,6 +117,13 @@ export function optimisticAccount(
     closingDay: isCreditCard && !prepaid ? input.closingDay ?? null : null,
     dueDay: isCreditCard && !prepaid ? input.dueDay ?? null : null,
     prepaid,
+    walletAddress: input.walletAddress ?? null,
+    syncKind: input.walletAddress ? input.syncKind ?? null : null,
+    syncEnabled: !!input.walletAddress && (input.syncEnabled ?? false),
+    syncSince: input.walletAddress ? input.syncSince ?? null : null,
+    syncCursor: null,
+    lastSyncedAt: null,
+    lastSyncError: null,
   };
 }
 

@@ -1,17 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Pencil, Save, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Pencil, RefreshCw, Save, X } from "lucide-react";
 import {
   createAccount,
   deleteAccount,
   listAccounts,
+  syncAccountNow,
   updateAccount,
 } from "#/server/accounts";
 import { listFaturas } from "#/server/faturas";
 import { listTransactions } from "#/server/transactions";
 import type { Account, Transaction } from "#/db/schema";
 import type { UpdateAccountInput } from "#/server/schemas";
+import { appToday } from "#/lib/dates";
 import { availableLimit } from "#/lib/faturas";
 import { prepaidBalanceOf } from "#/lib/money";
 import {
@@ -39,6 +41,16 @@ const money = (c: number) =>
   (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const kindLabel = (k: string) =>
   k === "credit_card" ? "cartão de crédito" : "conta bancária";
+type CryptoForm = {
+  enabled: boolean;
+  walletAddress: string;
+  syncKind: NonNullable<Account["syncKind"]>;
+  syncSince: string;
+  syncEnabled: boolean;
+};
+type CryptoInput =
+  | { walletAddress: null }
+  | Omit<CryptoForm, "enabled">;
 type AccountFormInput = {
   name: string;
   kind: "credit_card" | "bank_account";
@@ -46,7 +58,123 @@ type AccountFormInput = {
   closingDay?: number;
   dueDay?: number;
   prepaid?: boolean;
+} & CryptoInput;
+const emptyCrypto = (): CryptoForm => ({
+  enabled: false,
+  walletAddress: "",
+  syncKind: "wallet",
+  syncSince: appToday(),
+  syncEnabled: true,
+});
+const cryptoFromAccount = (a: Account): CryptoForm =>
+  a.walletAddress
+    ? {
+        enabled: true,
+        walletAddress: a.walletAddress,
+        syncKind: a.syncKind ?? "wallet",
+        syncSince: a.syncSince ?? appToday(),
+        syncEnabled: a.syncEnabled,
+      }
+    : emptyCrypto();
+const cryptoInput = ({ enabled, ...rest }: CryptoForm): CryptoInput =>
+  enabled
+    ? { ...rest, walletAddress: rest.walletAddress.trim() }
+    : { walletAddress: null };
+const syncedAgo = (at: Date | string | null) => {
+  if (!at) return "nunca sincronizado";
+  const minutes = Math.round((new Date(at).getTime() - Date.now()) / 60_000);
+  const rtf = new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" });
+  if (minutes > -60) return `sincronizado ${rtf.format(minutes, "minute")}`;
+  if (minutes > -1440)
+    return `sincronizado ${rtf.format(Math.round(minutes / 60), "hour")}`;
+  return `sincronizado ${rtf.format(Math.round(minutes / 1440), "day")}`;
 };
+function CryptoFields({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: CryptoForm;
+  onChange: (value: CryptoForm) => void;
+}) {
+  const set = (patch: Partial<CryptoForm>) => onChange({ ...value, ...patch });
+  return (
+    <fieldset className="grid gap-4 border-t-2 border-foreground pt-3 sm:col-span-3 sm:grid-cols-3">
+      <legend className="sr-only">Sincronização cripto</legend>
+      <Label
+        htmlFor={`${id}-crypto`}
+        className="flex min-h-10 cursor-pointer items-center gap-3 uppercase sm:col-span-3"
+      >
+        <Checkbox
+          id={`${id}-crypto`}
+          checked={value.enabled}
+          onChange={(e) => set({ enabled: e.target.checked })}
+        />
+        Sincronização cripto
+      </Label>
+      {value.enabled && (
+        <>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor={`${id}-address`}>Endereço da carteira</Label>
+            <Input
+              id={`${id}-address`}
+              value={value.walletAddress}
+              onChange={(e) => set({ walletAddress: e.target.value })}
+              placeholder="0x…"
+              pattern="^0x[0-9a-fA-F]{40}$"
+              title="0x seguido de 40 caracteres hexadecimais"
+              autoComplete="off"
+              spellCheck={false}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${id}-sync-kind`}>Origem</Label>
+            <Select
+              value={value.syncKind}
+              onValueChange={(syncKind) =>
+                set({ syncKind: syncKind as CryptoForm["syncKind"] })
+              }
+            >
+              <SelectTrigger id={`${id}-sync-kind`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wallet">Carteira (Base)</SelectItem>
+                <SelectItem value="etherfi_cash">ether.fi Cash (OP)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${id}-since`}>Importar desde</Label>
+            <Input
+              id={`${id}-since`}
+              type="date"
+              value={value.syncSince}
+              max={appToday()}
+              onChange={(e) => set({ syncSince: e.target.value })}
+              required
+            />
+          </div>
+          <div className="flex items-end sm:col-span-2">
+            <Label
+              htmlFor={`${id}-auto`}
+              className="flex min-h-10 cursor-pointer items-center gap-3 uppercase"
+            >
+              <Checkbox
+                id={`${id}-auto`}
+                checked={value.syncEnabled}
+                onChange={(e) => set({ syncEnabled: e.target.checked })}
+              />
+              Sincronizar automaticamente
+            </Label>
+          </div>
+        </>
+      )}
+    </fieldset>
+  );
+}
 function Accounts() {
   const qc = useQueryClient(),
     [name, setName] = useState(""),
@@ -54,7 +182,8 @@ function Accounts() {
     [limit, setLimit] = useState(""),
     [closingDay, setClosingDay] = useState(""),
     [dueDay, setDueDay] = useState(""),
-    [prepaid, setPrepaid] = useState(false);
+    [prepaid, setPrepaid] = useState(false),
+    [crypto, setCrypto] = useState(emptyCrypto);
   const [editId, setEditId] = useState("");
   const [editName, setEditName] = useState("");
   const [editKind, setEditKind] = useState<"credit_card" | "bank_account">(
@@ -64,9 +193,14 @@ function Accounts() {
   const [editClosingDay, setEditClosingDay] = useState("");
   const [editDueDay, setEditDueDay] = useState("");
   const [editPrepaid, setEditPrepaid] = useState(false);
+  const [editCrypto, setEditCrypto] = useState(emptyCrypto);
+  const [editError, setEditError] = useState("");
   const { data = [] } = useQuery({
     queryKey: ["accounts"],
     queryFn: () => listAccounts(),
+    // Background sync (claimed on load): poll until it finishes so the spinner stops on time.
+    refetchInterval: (query) =>
+      query.state.data?.some((a) => a.syncing) ? 2_000 : false,
   });
   const { data: faturas = [] } = useQuery({
     queryKey: ["faturas"],
@@ -76,6 +210,19 @@ function Accounts() {
     queryKey: ["transactions"],
     queryFn: () => listTransactions(),
   });
+  const invalidateAll = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: financeQueryKeys.accounts }),
+      qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
+      qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
+    ]);
+  // Synced rows land in transactions/faturas: refresh them when a background sync ends.
+  const syncing = data.some((a) => a.syncing);
+  const wasSyncing = useRef(false);
+  useEffect(() => {
+    if (wasSyncing.current && !syncing) void invalidateAll();
+    wasSyncing.current = syncing;
+  }, [syncing]);
   const create = useMutation({
     mutationFn: (d: AccountFormInput) => createAccount({ data: d }),
     onMutate: async (input) => {
@@ -104,6 +251,7 @@ function Accounts() {
       setClosingDay("");
       setDueDay("");
       setPrepaid(false);
+      setCrypto(emptyCrypto());
     },
     onError: (_error, _input, context) =>
       qc.setQueryData(financeQueryKeys.accounts, context?.previous),
@@ -118,8 +266,11 @@ function Accounts() {
     setEditClosingDay("");
     setEditDueDay("");
     setEditPrepaid(false);
+    setEditCrypto(emptyCrypto());
+    setEditError("");
   };
   const beginEdit = (account: Account) => {
+    setEditError("");
     setEditId(account.id);
     setEditName(account.name);
     setEditKind(account.kind);
@@ -127,6 +278,7 @@ function Accounts() {
     setEditClosingDay(account.closingDay == null ? "" : String(account.closingDay));
     setEditDueDay(account.dueDay == null ? "" : String(account.dueDay));
     setEditPrepaid(account.prepaid);
+    setEditCrypto(cryptoFromAccount(account));
   };
   const editedInput = (): UpdateAccountInput => ({
     id: editId,
@@ -145,6 +297,7 @@ function Accounts() {
         ? Number(editDueDay)
         : undefined,
     prepaid: editKind === "credit_card" ? editPrepaid : undefined,
+    ...cryptoInput(editCrypto),
   });
   const update = useMutation({
     mutationFn: (input: UpdateAccountInput) => updateAccount({ data: input }),
@@ -167,12 +320,7 @@ function Accounts() {
     onSuccess: clearEdit,
     onError: (_error, _input, context) =>
       qc.setQueryData(financeQueryKeys.accounts, context?.previous),
-    onSettled: () =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: financeQueryKeys.accounts }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
-      ]),
+    onSettled: invalidateAll,
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteAccount({ data: { id } }),
@@ -221,12 +369,11 @@ function Accounts() {
       );
       qc.setQueryData(financeQueryKeys.faturas, context?.previousFaturas);
     },
-    onSettled: () =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: financeQueryKeys.accounts }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
-        qc.invalidateQueries({ queryKey: financeQueryKeys.faturas }),
-      ]),
+    onSettled: invalidateAll,
+  });
+  const sync = useMutation({
+    mutationFn: (id: string) => syncAccountNow({ data: { id } }),
+    onSettled: invalidateAll,
   });
   return (
     <main className="page-wrap rise-in py-6 sm:py-10">
@@ -258,6 +405,7 @@ function Accounts() {
                     ? Number(dueDay)
                     : undefined,
                 prepaid: kind === "credit_card" ? prepaid : undefined,
+                ...cryptoInput(crypto),
               });
             }}
           >
@@ -340,6 +488,7 @@ function Accounts() {
                 />
               </div>
             )}
+            <CryptoFields id="new" value={crypto} onChange={setCrypto} />
             <Button className="w-full sm:col-span-3 sm:w-fit">
               Adicionar conta
             </Button>
@@ -376,6 +525,16 @@ function Accounts() {
                     {money(a.limit)}
                   </span>
                 )}
+                {a.walletAddress && (
+                  <span className="text-sm text-muted-foreground">
+                    {a.walletAddress.slice(0, 6)}…{a.walletAddress.slice(-4)} ·{" "}
+                    {a.syncing
+                      ? "sincronizando…"
+                      : a.lastSyncError
+                        ? "sincronização falhou"
+                        : syncedAgo(a.lastSyncedAt)}
+                  </span>
+                )}
                 <Button
                   className="ml-auto"
                   variant="outline"
@@ -388,15 +547,53 @@ function Accounts() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => remove.mutate(a.id)}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        a.kind === "credit_card"
+                          ? `Excluir "${a.name}"? Isso também apaga as compras parceladas deste cartão.`
+                          : `Excluir "${a.name}"?`,
+                      )
+                    )
+                      remove.mutate(a.id);
+                  }}
                 >
                   Excluir
                 </Button>
+                {a.walletAddress && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={a.syncing || (sync.isPending && sync.variables === a.id)}
+                    onClick={() => sync.mutate(a.id)}
+                  >
+                    <RefreshCw
+                      className={`size-4 ${a.syncing || (sync.isPending && sync.variables === a.id) ? "animate-spin" : ""}`}
+                    />
+                    Sincronizar
+                  </Button>
+                )}
+                {a.walletAddress && a.lastSyncError && (
+                  <p role="alert" className="w-full text-sm text-destructive">
+                    Erro na sincronização: {a.lastSyncError}
+                  </p>
+                )}
                 {editId === a.id && (
                   <form
                     className="grid w-full gap-4 border-t-2 border-foreground pt-3 sm:grid-cols-3"
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (
+                        editKind === "credit_card" &&
+                        !editPrepaid &&
+                        (!editClosingDay || !editDueDay)
+                      ) {
+                        setEditError(
+                          "Informe o dia de fechamento e de vencimento.",
+                        );
+                        return;
+                      }
+                      setEditError("");
                       update.mutate(editedInput());
                     }}
                   >
@@ -465,7 +662,6 @@ function Accounts() {
                           max="28"
                           value={editClosingDay}
                           onChange={(e) => setEditClosingDay(e.target.value)}
-                          required
                         />
                       </div>
                     )}
@@ -478,10 +674,14 @@ function Accounts() {
                           max="28"
                           value={editDueDay}
                           onChange={(e) => setEditDueDay(e.target.value)}
-                          required
                         />
                       </div>
                     )}
+                    <CryptoFields
+                      id={a.id}
+                      value={editCrypto}
+                      onChange={setEditCrypto}
+                    />
                     <div className="flex gap-2 sm:col-span-3">
                       <Button disabled={update.isPending}>
                         <Save className="size-4" />
@@ -497,9 +697,12 @@ function Accounts() {
                         Cancelar
                       </Button>
                     </div>
-                    {update.error && (
-                      <p className="text-sm text-destructive sm:col-span-3">
-                        {update.error.message}
+                    {(editError || update.error) && (
+                      <p
+                        role="alert"
+                        className="text-sm text-destructive sm:col-span-3"
+                      >
+                        {editError || update.error?.message}
                       </p>
                     )}
                   </form>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import type { TransferInput } from "#/server/schemas";
 import { DEFAULT_TRANSFER_NOTE } from "#/lib/transaction-labels";
@@ -29,32 +29,55 @@ type AccountOption = {
   name: string;
 };
 
+type EditableTransfer = {
+  amount: number;
+  date: string;
+  accountId: string | null;
+  counterAccountId: string | null;
+  note: string | null;
+};
+
 type TransferModalProps = {
   accounts: AccountOption[];
-  onTransfer: (data: TransferInput) => Promise<void>;
+  onTransfer: (data: TransferInput) => Promise<unknown>;
   compact?: boolean;
+  trigger?: React.ReactNode;
+  /** Edit mode: prefills the form; `onTransfer` then saves the changes. */
+  initialTransfer?: EditableTransfer;
 };
 
 export function TransferModal({
   accounts,
   onTransfer,
   compact = false,
+  trigger,
+  initialTransfer,
 }: TransferModalProps) {
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(localDateKey);
+  const [note, setNote] = useState(DEFAULT_TRANSFER_NOTE);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const reset = () => {
-    setFrom("");
-    setTo("");
-    setAmount("");
-    setDate(localDateKey());
+  const isEditing = Boolean(initialTransfer);
+
+  const reset = (source = initialTransfer) => {
+    setFrom(source?.accountId ?? "");
+    setTo(source?.counterAccountId ?? "");
+    setAmount(source ? (source.amount / 100).toFixed(2) : "");
+    setDate(source?.date ?? localDateKey());
+    setNote(source?.note ?? DEFAULT_TRANSFER_NOTE);
     setError("");
   };
+
+  // Reset only on open (as TransactionModal) so refetches don't stomp the form.
+  useEffect(() => {
+    if (open) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const changeOpen = (nextOpen: boolean) => {
     if (isSaving) return;
@@ -65,6 +88,7 @@ export function TransferModal({
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
+        {trigger ?? (
         <Button
           type="button"
           variant="outline"
@@ -75,10 +99,13 @@ export function TransferModal({
           <ArrowRightLeft className={compact ? "size-5" : "size-4"} />
           {!compact && "Transferir"}
         </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="overflow-visible sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Transferir entre contas</DialogTitle>
+          <DialogTitle>
+            {isEditing ? "Editar transferência" : "Transferir entre contas"}
+          </DialogTitle>
           <DialogDescription>
             Movimente dinheiro sem alterar seu saldo total.
           </DialogDescription>
@@ -98,7 +125,7 @@ export function TransferModal({
                 date,
                 account_id: from,
                 counter_account_id: to,
-                note: DEFAULT_TRANSFER_NOTE,
+                note,
               });
               setOpen(false);
               reset();
@@ -106,13 +133,23 @@ export function TransferModal({
               setError(
                 cause instanceof Error
                   ? cause.message
-                  : "Não foi possível concluir a transferência"
+                  : isEditing
+                    ? "Não foi possível salvar a transferência"
+                    : "Não foi possível concluir a transferência"
               );
             } finally {
               setIsSaving(false);
             }
           }}
         >
+          <Field label="Descrição" htmlFor="transfer-note">
+            <Input
+              id="transfer-note"
+              value={note}
+              maxLength={500}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="De" htmlFor="transfer-from">
               <Select
@@ -200,7 +237,13 @@ export function TransferModal({
               </Button>
             </DialogClose>
             <Button disabled={isSaving}>
-              {isSaving ? "Transferindo…" : "Transferir"}
+              {isSaving
+                ? isEditing
+                  ? "Salvando…"
+                  : "Transferindo…"
+                : isEditing
+                  ? "Salvar transferência"
+                  : "Transferir"}
             </Button>
           </div>
         </form>

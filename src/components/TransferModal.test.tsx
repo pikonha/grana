@@ -68,6 +68,46 @@ describe("TransferModal", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("edits an existing transfer", async () => {
+    const onTransfer = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TransferModal
+        accounts={accounts}
+        onTransfer={onTransfer}
+        trigger={<button type="button">Editar</button>}
+        initialTransfer={{
+          amount: 1533510,
+          date: "2026-09-21",
+          accountId: accounts[0].id,
+          counterAccountId: accounts[1].id,
+          note: "Transferência",
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    const dialog = screen.getByRole("dialog");
+    expect(
+      (within(dialog).getByLabelText("Valor (R$)") as HTMLInputElement).value
+    ).toBe("15335.10");
+    fireEvent.change(within(dialog).getByLabelText("Descrição"), {
+      target: { value: "caução casa nova" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar transferência" })
+    );
+
+    await waitFor(() =>
+      expect(onTransfer).toHaveBeenCalledWith({
+        amount: 1533510,
+        date: "2026-09-21",
+        account_id: accounts[0].id,
+        counter_account_id: accounts[1].id,
+        note: "caução casa nova",
+      })
+    );
+  });
+
   it("closes without submitting", () => {
     const onTransfer = vi.fn();
     render(<TransferModal accounts={accounts} onTransfer={onTransfer} />);

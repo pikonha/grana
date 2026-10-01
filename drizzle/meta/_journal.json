@@ -33,8 +33,22 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1786454298642,
-      "tag": "0004_cheerful_argent",
+      "when": 1789046584983,
+      "tag": "0004_recurrence_account_and_soft_deletes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790258526783,
+      "tag": "0005_crypto_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790858060133,
+      "tag": "0006_transaction_paid",
       "breakpoints": true
     }
   ]

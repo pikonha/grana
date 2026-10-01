@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, RefreshCw, ThumbsUp, Trash2 } from "lucide-react";
 import { listAccounts } from "#/server/accounts";
 import { createCategory, listCategories } from "#/server/categories";
@@ -14,11 +14,13 @@ import {
   listTransactions,
   setTransactionPaid,
   updateTransaction,
+  updateTransfer,
 } from "#/server/transactions";
 import type {
   CreateTransactionInput,
   TransferInput,
   UpdateTransactionInput,
+  UpdateTransferInput,
 } from "#/server/schemas";
 import type { Category, Transaction } from "#/db/schema";
 import type {
@@ -36,6 +38,7 @@ import {
 } from "#/lib/optimistic";
 import { isPaymentTrackable, signedAmount } from "#/lib/money";
 import { localMonthKey, scheduledDatesInMonth } from "#/lib/recurrence";
+import { transferNote } from "#/lib/transaction-labels";
 import { CategorySelect } from "@/components/CategorySelect";
 import { MonthNav } from "@/components/MonthNav";
 import { MoneyInput } from "@/components/MoneyInput";
@@ -112,6 +115,8 @@ type DisplayRow =
       onDelete: () => void;
     };
 
+const PAGE_SIZE = 20;
+
 const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", {
     style: "currency",
@@ -169,6 +174,8 @@ function Transactions() {
   const [count, setCount] = useState("2");
   const [activeMonth, setActiveMonth] = useState(localMonthKey);
   const [filterAccount, setFilterAccount] = useState("");
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const sentinel = useRef<HTMLDivElement>(null);
 
   const selected = accounts.find((account) => account.id === accountId);
   const canInstall = type === "expend" && selected?.kind === "credit_card";
@@ -223,7 +230,7 @@ function Transactions() {
           newestTransactions(
             current.map((transaction) =>
               transaction.id === data.id
-                ? optimisticUpdatedTransaction(transaction, data)
+                ? optimisticUpdatedTransaction(transaction, data, categories)
                 : transaction,
             ),
           ),
@@ -325,6 +332,38 @@ function Transactions() {
     onSettled: refresh,
   });
 
+  const editTransfer = useMutation({
+    mutationFn: (data: UpdateTransferInput) => updateTransfer({ data }),
+    onMutate: async (data) => {
+      await qc.cancelQueries({ queryKey: financeQueryKeys.transactions });
+      const previous = qc.getQueryData<TransactionRow[]>(
+        financeQueryKeys.transactions,
+      );
+      qc.setQueryData<TransactionRow[]>(
+        financeQueryKeys.transactions,
+        (current = []) =>
+          newestTransactions(
+            current.map((transaction) =>
+              transaction.id === data.id
+                ? {
+                    ...transaction,
+                    amount: data.amount,
+                    date: data.date,
+                    accountId: data.account_id,
+                    counterAccountId: data.counter_account_id,
+                    note: transferNote(data.note),
+                  }
+                : transaction,
+            ),
+          ),
+      );
+      return { previous };
+    },
+    onError: (_error, _data, context) =>
+      qc.setQueryData(financeQueryKeys.transactions, context?.previous),
+    onSettled: refresh,
+  });
+
   const monthTx = transactions.filter(
     (transaction) =>
       transaction.date.slice(0, 7) === activeMonth &&
@@ -415,9 +454,31 @@ function Transactions() {
       installmentLabel: null,
       isRecurring: true,
       pending: removeRule.isPending,
-      onDelete: () => removeRule.mutate(rule.id),
+      onDelete: () => {
+        if (
+          window.confirm(
+            "Excluir esta recorrência? Isso apaga todo o histórico gerado por ela.",
+          )
+        )
+          removeRule.mutate(rule.id);
+      },
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
+  const pageRows = rows.slice(0, visible);
+  const hasMore = rows.length > visible;
+
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible((count) => count + PAGE_SIZE);
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, visible]);
 
   // Signed net of the month's unpaid entries, same convention as "Resultado do mês".
   // Gated on row count, not on the total: an unpaid earn and expend can cancel to zero
@@ -607,13 +668,20 @@ function Transactions() {
         </CardHeader>
         <CardContent>
           <div className="relative mb-4 flex flex-wrap items-center justify-center gap-4">
-            <MonthNav month={activeMonth} onChange={setActiveMonth} />
+            <MonthNav
+              month={activeMonth}
+              onChange={(month) => {
+                setActiveMonth(month);
+                setVisible(PAGE_SIZE);
+              }}
+            />
             <div className="w-full sm:absolute sm:inset-y-0 sm:right-0 sm:flex sm:w-auto sm:items-center">
               <Select
                 value={filterAccount || EMPTY_SELECT_VALUE}
-                onValueChange={(value) =>
-                  setFilterAccount(value === EMPTY_SELECT_VALUE ? "" : value)
-                }
+                onValueChange={(value) => {
+                  setFilterAccount(value === EMPTY_SELECT_VALUE ? "" : value);
+                  setVisible(PAGE_SIZE);
+                }}
               >
                 <SelectTrigger
                   aria-label="Filtrar por conta"
@@ -621,7 +689,7 @@ function Transactions() {
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="end">
                   <SelectItem value={EMPTY_SELECT_VALUE}>
                     Todas as contas
                   </SelectItem>
@@ -647,7 +715,7 @@ function Transactions() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {pageRows.map((row) => (
                 <TableRow key={row.key} className={row.kind === "transaction" && !row.paid ? "opacity-60" : ""}>
                     <TableCell className="align-top tabular-nums">
                       <div className="font-medium">{dayLabel(row.date)}</div>
@@ -740,13 +808,35 @@ function Transactions() {
                             </Button>
                           )}
                         {row.kind === "transaction" &&
+                          row.tx.type === "transfer" && (
+                            <TransferModal
+                              accounts={accounts}
+                              initialTransfer={row.tx}
+                              onTransfer={(data) =>
+                                editTransfer.mutateAsync({ ...data, id: row.tx.id })
+                              }
+                              trigger={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Editar"
+                                  className="size-8"
+                                  disabled={row.pending}
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                              }
+                            />
+                          )}
+                        {row.kind === "transaction" &&
                           !row.tx.installmentPlanId &&
                           row.tx.type !== "transfer" && (
                             <TransactionModal
                               type={row.tx.type}
                               accounts={accounts}
                               categories={categories}
-                              initialTransaction={row.tx}
+                              initialTransaction={{ ...row.tx, type: row.tx.type }}
                               onUpdate={(data) => update.mutateAsync(data)}
                               onCreateCategory={async (name, color) =>
                                 (
@@ -796,6 +886,7 @@ function Transactions() {
               )}
             </TableBody>
           </Table>
+          {hasMore && <div ref={sentinel} className="h-px" />}
         </CardContent>
       </Card>
     </main>

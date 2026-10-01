@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { appMonthKey, appToday } from './dates'
 import {
   assertMoney,
   balanceOf,
@@ -133,5 +134,23 @@ describe('scheduled recurrence projection', () => {
       '2026-08-31',
     ])
     expect(scheduledDatesInMonth('daily', '2026-08-30', '2026-07')).toEqual([])
+  })
+})
+
+describe('app timezone dates', () => {
+  afterEach(() => vi.useRealTimers())
+  it('uses the app timezone, not UTC, near midnight', () => {
+    vi.useFakeTimers()
+    // 2026-01-01T02:00Z is still 2025-12-31 23:00 in America/Sao_Paulo (UTC-3).
+    vi.setSystemTime(new Date('2026-01-01T02:00:00Z'))
+    expect(new Date().toISOString().slice(0, 10)).toBe('2026-01-01')
+    expect(appToday()).toBe('2025-12-31')
+    expect(appMonthKey()).toBe('2025-12')
+  })
+  it('agrees with UTC mid-day', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T12:00:00Z'))
+    expect(appToday()).toBe('2026-07-11')
+    expect(appMonthKey()).toBe('2026-07')
   })
 })

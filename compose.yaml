@@ -9,7 +9,6 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       HERMES_WEBHOOK_SECRET: dev
       HERMES_USER_ID: local-demo-user
-      CRON_SECRET: dev
     ports:
       - "3000:3000"
     volumes:

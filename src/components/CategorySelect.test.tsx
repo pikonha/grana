@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -160,12 +161,10 @@ describe("CategorySelect", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Etiquetas: Nenhuma" }));
-    const search = screen.getByRole("combobox", { name: "Buscar ou criar etiqueta" });
+    screen.getByRole("combobox", { name: "Buscar ou criar etiqueta" });
     expect(screen.getAllByRole("option").every((option) => option.tabIndex === -1)).toBe(true);
 
-    fireEvent.blur(search, {
-      relatedTarget: screen.getByRole("button", { name: "Next field" }),
-    });
+    act(() => screen.getByRole("button", { name: "Next field" }).focus());
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 });

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Upload } from "lucide-react";
 import type { TransactionRow } from "#/server/transactions";
-import type { Category } from "#/db/schema";
 import { CSV_TEMPLATE, dupKey, normalizeForMatch, normalizeHeader, parseCSV, sniffDelimiter, toCents, toIsoDate } from "#/lib/csv";
 import { formatCentsBRL } from "#/lib/money";
 import { Button } from "./ui/button";
@@ -16,19 +15,16 @@ type ParsedRow = { line: number; date: string; amount: number; type: "earn" | "e
 export function ImportCsvModal({
   transactions,
   accounts,
-  categories,
   onImport,
   onCreateAccount,
 }: {
   transactions: TransactionRow[];
   accounts: AccountOption[];
-  categories: Category[];
   onImport: (rows: { type: "earn" | "expend"; amount: number; date: string; tag_names?: string[]; account_id?: string; note?: string }[]) => Promise<{ count: number }>;
   onCreateAccount: (name: string) => Promise<string>;
 }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
-  const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [treatAsExpense, setTreatAsExpense] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -36,7 +32,6 @@ export function ImportCsvModal({
 
   const reset = () => {
     setStep(1);
-    setFile(null);
     setRows([]);
     setTreatAsExpense(false);
     setError("");
@@ -116,7 +111,6 @@ export function ImportCsvModal({
       return;
     }
     setRows(newRows);
-    setFile(selected);
     setStep(2);
   };
 
@@ -126,6 +120,7 @@ export function ImportCsvModal({
   const finalRows = rows.map((r) => ({
     ...r,
     type: treatAsExpense && r.type === "earn" ? ("expend" as const) : r.type,
+    error: r.conta && !accountNormMap.has(normalizeForMatch(r.conta)) ? "Conta desconhecida" : r.error === "Conta desconhecida" ? undefined : r.error,
   }));
   const validRows = finalRows.filter((r) => !r.error && r.includeDup);
   const earnRows = validRows.filter((r) => r.type === "earn");
@@ -209,7 +204,7 @@ export function ImportCsvModal({
                 <span>Despesas: {expendRows.length} · {formatCentsBRL(expendTotal)}</span>
               </div>
               <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox checked={treatAsExpense} onCheckedChange={(checked) => setTreatAsExpense(!!checked)} />
+                <Checkbox checked={treatAsExpense} onChange={(e) => setTreatAsExpense(e.target.checked)} />
                 Tratar todos como despesa
               </label>
             </div>
@@ -241,7 +236,7 @@ export function ImportCsvModal({
                       <td className="px-2 py-1">
                         {r.error ? <span className="text-destructive">{r.error}</span> : r.isDup ? (
                           <label className="flex cursor-pointer items-center gap-1">
-                            <Checkbox checked={r.includeDup} onCheckedChange={(checked) => { r.includeDup = !!checked; setRows([...rows]); }} />
+                            <Checkbox checked={r.includeDup} onChange={(e) => { r.includeDup = e.target.checked; setRows([...rows]); }} />
                             <span className="text-muted-foreground">Duplicado</span>
                           </label>
                         ) : "OK"}

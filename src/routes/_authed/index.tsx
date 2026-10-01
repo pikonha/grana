@@ -11,10 +11,15 @@ import {
   importTransactions,
   listTransactions,
 } from "#/server/transactions";
-import type { CreateTransactionInput, TransferInput } from "#/server/schemas";
+import type {
+  CreateTransactionInput,
+  ImportTransactionsInput,
+  TransferInput,
+} from "#/server/schemas";
 import type { Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
-import { balanceOf } from "#/lib/money";
+import { balanceOf, prepaidBalanceOf } from "#/lib/money";
+import { appToday } from "#/lib/dates";
 import {
   financeQueryKeys,
   newestTransactions,
@@ -29,6 +34,14 @@ import { TransactionModal } from "@/components/TransactionModal";
 import { TransferModal } from "@/components/TransferModal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  EMPTY_SELECT_VALUE,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authed/")({ component: Dashboard });
 
@@ -42,6 +55,8 @@ function money(cents: number) {
 function Dashboard() {
   const queryClient = useQueryClient();
   const [showValues, setShowValues] = useState(true);
+  // "" = todas as contas
+  const [accountId, setAccountId] = useState("");
   const { data: transactions = [] } = useQuery({
     queryKey: ["transactions"],
     queryFn: () => listTransactions(),
@@ -58,6 +73,10 @@ function Dashboard() {
     queryKey: ["faturas"],
     queryFn: () => listFaturas(),
   });
+  const inAccount = (transaction: TransactionRow) =>
+    !accountId ||
+    transaction.accountId === accountId ||
+    transaction.counterAccountId === accountId;
   const statsTransactions = transactions.filter(
     (
       transaction
@@ -66,9 +85,13 @@ function Dashboard() {
   );
   const paidStatsTransactions = statsTransactions.filter((tx) => tx.paid);
   const monthKey = new Date().toISOString().slice(0, 7);
-  const monthTransactions = paidStatsTransactions.filter((transaction) =>
-    transaction.date.startsWith(monthKey)
+  const monthTransactions = paidStatsTransactions.filter(
+    (transaction) =>
+      transaction.date.startsWith(monthKey) && inAccount(transaction)
   );
+  const balance = accountId
+    ? prepaidBalanceOf(accountId, transactions)
+    : balanceOf(paidStatsTransactions);
   const sumByType = (type: "earn" | "expend") =>
     monthTransactions
       .filter((transaction) => transaction.type === type)
@@ -76,7 +99,10 @@ function Dashboard() {
   const monthEarn = sumByType("earn");
   const monthExpend = sumByType("expend");
   const currentFaturasTotal = faturas
-    .filter((fatura) => fatura.isCurrent)
+    .filter(
+      (fatura) =>
+        fatura.isCurrent && (!accountId || fatura.accountId === accountId)
+    )
     .reduce((total, fatura) => total + fatura.total, 0);
   const create = useMutation({
     mutationFn: (data: CreateTransactionInput) => createTransaction({ data }),
@@ -154,7 +180,7 @@ function Dashboard() {
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
   });
   const importMutation = useMutation({
-    mutationFn: (data: Parameters<typeof importTransactions>[0]["data"]) => importTransactions({ data }),
+    mutationFn: (data: ImportTransactionsInput) => importTransactions({ data }),
     onSettled: () => Promise.all([
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.transactions }),
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.categories }),
@@ -223,21 +249,38 @@ function Dashboard() {
           <ImportCsvModal
             transactions={transactions}
             accounts={accounts}
-            categories={categories}
             onImport={(data) => importMutation.mutateAsync(data)}
             onCreateAccount={async (name) => (await createAccountMutation.mutateAsync(name)).id}
           />
         </div>
       </div>
       <Card className="mb-6">
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="text-sm text-muted-foreground">
-            Saldo total
+            {accountId ? "Saldo da conta" : "Saldo total"}
           </CardTitle>
+          <Select
+            value={accountId || EMPTY_SELECT_VALUE}
+            onValueChange={(value) =>
+              setAccountId(value === EMPTY_SELECT_VALUE ? "" : value)
+            }
+          >
+            <SelectTrigger className="w-auto min-w-44" aria-label="Conta">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={EMPTY_SELECT_VALUE}>Todas as contas</SelectItem>
+              {accounts.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  {account.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardHeader>
         <CardContent>
           <p className="text-4xl font-bold sm:text-5xl">
-            {displayMoney(balanceOf(paidStatsTransactions))}
+            {displayMoney(balance)}
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button asChild>
@@ -259,7 +302,7 @@ function Dashboard() {
           value={displayMoney(monthEarn)}
         />
         <StatTile
-          label="Despesas do mês"
+          label="Gasto no mês"
           value={displayMoney(monthExpend)}
         />
         <StatTile
@@ -277,7 +320,17 @@ function Dashboard() {
           <CardTitle>Transações recentes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {transactions.slice(0, 10).map((transaction) => (
+          {transactions
+            .filter(
+              (transaction) =>
+                transaction.date <= appToday() && inAccount(transaction)
+            )
+            .slice(0, 5)
+            .map((transaction) => {
+            const incoming =
+              transaction.type === "earn" ||
+              (!!accountId && transaction.counterAccountId === accountId);
+            return (
             <div
               key={transaction.id}
               className="flex justify-between gap-3 border-b pb-3 last:border-0"
@@ -288,16 +341,15 @@ function Dashboard() {
               </span>
               <span
                 className={`shrink-0 ${
-                  transaction.type === "earn"
-                    ? "text-emerald-600"
-                    : "text-destructive"
+                  incoming ? "text-emerald-600" : "text-destructive"
                 }`}
               >
-                {transaction.type === "earn" ? "+" : "−"}
+                {incoming ? "+" : "−"}
                 {displayMoney(transaction.amount)}
               </span>
             </div>
-          ))}
+            );
+          })}
           {!transactions.length && (
             <p className="text-muted-foreground">Nenhuma transação ainda.</p>
           )}

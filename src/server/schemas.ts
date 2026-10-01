@@ -3,6 +3,11 @@ import { DEFAULT_TAG_COLOR } from '#/lib/tag-colors'
 import { DEFAULT_TRANSFER_NOTE } from '#/lib/transaction-labels'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+  // The regex alone lets 2026-13-01 / 2026-02-30 through; round-trip to reject them.
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`)
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
+  }, 'date must be a real calendar date')
 const cents = z.number().int('amount must be integer cents')
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color must be #RRGGBB').transform((color) => color.toLowerCase())
 
@@ -15,6 +20,9 @@ export const transactionInput = z.object({
   paid: z.boolean().optional(),
 })
 export type TransactionInput = z.infer<typeof transactionInput>
+
+/** The hermes webhook rejects unknown keys instead of silently dropping them (e.g. `card_id`). */
+export const webhookTransactionInput = transactionInput.strict()
 
 export const updateTransactionInput = transactionInput.extend({
   id: z.string().uuid(),
@@ -29,16 +37,22 @@ export const createTransactionInput = transactionInput.extend({
 })
 export type CreateTransactionInput = z.infer<typeof createTransactionInput>
 
-export const transferInput = z.object({
+const transferFields = z.object({
   amount: cents.positive(), date: isoDate,
   account_id: z.string().uuid(), counter_account_id: z.string().uuid(),
   note: z.string().max(500).optional().default(DEFAULT_TRANSFER_NOTE),
-}).refine((data) => data.account_id !== data.counter_account_id, {
-  message: 'Cannot transfer to the same account',
 })
+const distinctAccounts = [(data: { account_id: string; counter_account_id: string }) => data.account_id !== data.counter_account_id, {
+  message: 'Cannot transfer to the same account',
+}] as const
+export const transferInput = transferFields.refine(...distinctAccounts)
 export type TransferInput = z.infer<typeof transferInput>
 
+export const updateTransferInput = transferFields.extend({ id: z.string().uuid() }).refine(...distinctAccounts)
+export type UpdateTransferInput = z.infer<typeof updateTransferInput>
+
 export const faturaPaymentInput = z.object({ account_id: z.string().uuid(), cycle_key: isoDate, paid_at: isoDate.optional() })
+export type FaturaPaymentInput = z.infer<typeof faturaPaymentInput>
 export const transactionPaidInput = z.object({ id: z.string().uuid(), paid: z.boolean() })
 
 export const categoryInput = z.object({
@@ -51,8 +65,15 @@ export const accountInput = z.object({
   closingDay: z.number().int().min(1).max(28).optional(),
   dueDay: z.number().int().min(1).max(28).optional(),
   prepaid: z.boolean().optional(),
+  // Crypto sync. walletAddress: omitted = keep as is, null = no longer a crypto account.
+  walletAddress: z.string().trim().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddress must be 0x + 40 hex chars').transform((a) => a.toLowerCase()).nullable().optional(),
+  syncKind: z.enum(['wallet', 'etherfi_cash']).optional(),
+  syncEnabled: z.boolean().optional(),
+  syncSince: isoDate.optional(),
 }).refine((data) => data.kind !== 'credit_card' || data.prepaid || (data.closingDay !== undefined && data.dueDay !== undefined), {
   message: 'closingDay and dueDay are required for limit-based credit cards',
+}).refine((data) => !data.walletAddress || (data.syncKind && data.syncSince), {
+  message: 'syncKind and syncSince are required for crypto accounts',
 })
 export type AccountInput = z.infer<typeof accountInput>
 
