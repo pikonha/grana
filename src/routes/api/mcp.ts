@@ -8,10 +8,10 @@ import { db } from '#/db/index'
 import { account, installmentPlan, recurrenceRule, tag, transaction } from '#/db/schema'
 import { appToday } from '#/lib/dates'
 import { tagColorForIndex } from '#/lib/tag-colors'
-import { accountInput, categoryInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateTransactionInput } from '#/server/schemas'
+import { accountInput, categoryInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateRecurrenceRuleInput, updateTransactionInput } from '#/server/schemas'
 import { createAccountCore, updateAccountCore } from '#/server/accounts.core'
 import { tagsByRule, tagsByTransaction } from '#/server/tags.core'
-import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateTransactionCore } from '#/server/transactions.core'
+import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateRecurrenceRuleCore, updateTransactionCore } from '#/server/transactions.core'
 import { listFaturasCore, markFaturaPaidCore, unmarkFaturaPaidCore } from '#/server/faturas.core'
 
 /**
@@ -86,6 +86,11 @@ function buildServer(userId: string) {
     const groupedTags = await tagsByRule(rows.map((row) => row.id))
     return text(rows.map((row) => ({ ...row, tags: groupedTags.get(row.id) ?? [] })))
   })
+
+  server.registerTool('update_recurrence_rule', {
+    description: 'Update a recurrence rule (type, amount, account, note, tags). Applies to occurrences not generated yet; the schedule stays. tag_ids replaces all tags (omit = none)',
+    inputSchema: updateRecurrenceRuleInput,
+  }, async (data) => text(await updateRecurrenceRuleCore(userId, data)))
 
   server.registerTool('list_faturas', { description: 'List the computed credit-card fatura (billing cycle) rows for the authenticated user' }, async () => {
     return text(await listFaturasCore(userId, appToday()))
