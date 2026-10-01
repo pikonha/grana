@@ -34,13 +34,13 @@ export const faturaPayment = pgTable('fatura_payment', {
 export const recurrenceRule = pgTable('recurrence_rule', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(), amount: integer().notNull(),
   type: txTypeEnum().notNull(), interval: intervalEnum().notNull(), nextRun: date('next_run').notNull(),
-  accountId: uuid('account_id').references(() => account.id, { onDelete: 'set null' }),
+  accountId: uuid('account_id').notNull().references(() => account.id, { onDelete: 'restrict' }),
   note: text(),
 })
 
 export const installmentPlan = pgTable('installment_plan', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(),
-  accountId: uuid('account_id').references(() => account.id, { onDelete: 'set null' }),
+  accountId: uuid('account_id').notNull().references(() => account.id, { onDelete: 'restrict' }),
   totalAmount: integer('total_amount').notNull(), count: integer().notNull(),
   startDate: date('start_date').notNull(), note: text(),
 })
@@ -48,8 +48,9 @@ export const installmentPlan = pgTable('installment_plan', {
 export const transaction = pgTable('transaction', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(), type: txTypeEnum().notNull(),
   amount: integer().notNull(), date: date().notNull(),
-  accountId: uuid('account_id').references(() => account.id, { onDelete: 'set null' }),
-  counterAccountId: uuid('counter_account_id').references(() => account.id, { onDelete: 'set null' }),
+  // Every transaction belongs to an account; deleting an account in use is refused.
+  accountId: uuid('account_id').notNull().references(() => account.id, { onDelete: 'restrict' }),
+  counterAccountId: uuid('counter_account_id').references(() => account.id, { onDelete: 'restrict' }),
   installmentPlanId: uuid('installment_plan_id').references(() => installmentPlan.id, { onDelete: 'cascade' }),
   recurrenceRuleId: uuid('recurrence_rule_id').references(() => recurrenceRule.id, { onDelete: 'set null' }),
   periodKey: text('period_key'), note: text(), paid: boolean().notNull().default(true),

@@ -108,17 +108,17 @@ export function buildSeedData(anchor = new Date().toISOString().slice(0, 10)): S
   const recurrenceRules: SeedData['recurrenceRules'] = [
     nextRule(
     {
-      id: ruleIds.salary, userId: SEED_USER_ID, amount: 850_000, type: 'earn', interval: 'monthly',
+      id: ruleIds.salary, userId: SEED_USER_ID, amount: 850_000, type: 'earn', interval: 'monthly', accountId: accountIds.checking,
       nextRun: monthDate(anchor, 1, 5), categoryId: categoryIds.salary, note: 'Monthly salary',
     }),
     nextRule(
     {
-      id: ruleIds.rent, userId: SEED_USER_ID, amount: 220_000, type: 'expend', interval: 'monthly',
+      id: ruleIds.rent, userId: SEED_USER_ID, amount: 220_000, type: 'expend', interval: 'monthly', accountId: accountIds.checking,
       nextRun: monthDate(anchor, 1, 10), categoryId: categoryIds.housing, note: 'Apartment rent',
     }),
     nextRule(
     {
-      id: ruleIds.streaming, userId: SEED_USER_ID, amount: 4_990, type: 'expend', interval: 'monthly',
+      id: ruleIds.streaming, userId: SEED_USER_ID, amount: 4_990, type: 'expend', interval: 'monthly', accountId: accountIds.visa,
       nextRun: monthDate(anchor, 1, 8), categoryId: categoryIds.subscriptions, note: 'Streaming subscription',
     }),
   ]

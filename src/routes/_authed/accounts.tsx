@@ -11,7 +11,7 @@ import {
 } from "#/server/accounts";
 import { listFaturas } from "#/server/faturas";
 import { listTransactions } from "#/server/transactions";
-import type { Account, Transaction } from "#/db/schema";
+import type { Account } from "#/db/schema";
 import type { UpdateAccountInput } from "#/server/schemas";
 import { appToday } from "#/lib/dates";
 import { availableLimit } from "#/lib/faturas";
@@ -327,14 +327,10 @@ function Accounts() {
     onMutate: async (id) => {
       await Promise.all([
         qc.cancelQueries({ queryKey: financeQueryKeys.accounts }),
-        qc.cancelQueries({ queryKey: financeQueryKeys.transactions }),
         qc.cancelQueries({ queryKey: financeQueryKeys.faturas }),
       ]);
       const previousAccounts = qc.getQueryData<Account[]>(
         financeQueryKeys.accounts,
-      );
-      const previousTransactions = qc.getQueryData<Transaction[]>(
-        financeQueryKeys.transactions,
       );
       const previousFaturas = qc.getQueryData<typeof faturas>(
         financeQueryKeys.faturas,
@@ -342,31 +338,14 @@ function Accounts() {
       qc.setQueryData<Account[]>(financeQueryKeys.accounts, (current = []) =>
         current.filter((account) => account.id !== id),
       );
-      qc.setQueryData<Transaction[]>(
-        financeQueryKeys.transactions,
-        (current = []) =>
-          current.map((transaction) => ({
-            ...transaction,
-            accountId:
-              transaction.accountId === id ? null : transaction.accountId,
-            counterAccountId:
-              transaction.counterAccountId === id
-                ? null
-                : transaction.counterAccountId,
-          })),
-      );
       qc.setQueryData<typeof faturas>(
         financeQueryKeys.faturas,
         (current = []) => current.filter((fatura) => fatura.accountId !== id),
       );
-      return { previousAccounts, previousTransactions, previousFaturas };
+      return { previousAccounts, previousFaturas };
     },
     onError: (_error, _id, context) => {
       qc.setQueryData(financeQueryKeys.accounts, context?.previousAccounts);
-      qc.setQueryData(
-        financeQueryKeys.transactions,
-        context?.previousTransactions,
-      );
       qc.setQueryData(financeQueryKeys.faturas, context?.previousFaturas);
     },
     onSettled: invalidateAll,
