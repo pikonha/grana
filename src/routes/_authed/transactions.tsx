@@ -896,10 +896,10 @@ function Transactions() {
                             />
                           )}
                         {row.kind === "transaction" &&
-                          !row.tx.installmentPlanId &&
                           row.tx.type !== "transfer" && (
                             <TransactionModal
                               type={row.tx.type}
+                              installment={!!row.tx.installmentPlanId}
                               accounts={accounts}
                               categories={categories}
                               initialTransaction={{ ...row.tx, type: row.tx.type }}

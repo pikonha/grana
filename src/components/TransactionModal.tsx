@@ -58,6 +58,8 @@ type TransactionModalProps = {
   onDeleteCategory?: CategorySelectProps["onDelete"];
   /** Editing a recurrence rule: no date (the schedule stays), applies to future occurrences. */
   recurring?: boolean;
+  /** Editing a parcela: only tags change, applied to every parcela of the plan. */
+  installment?: boolean;
 };
 
 const today = () => localDateKey();
@@ -73,6 +75,7 @@ export function TransactionModal({
   onCreateCategory,
   onDeleteCategory,
   recurring = false,
+  installment = false,
 }: TransactionModalProps) {
   const [open, setOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<"earn" | "expend">(
@@ -156,6 +159,8 @@ export function TransactionModal({
           <DialogDescription>
             {recurring
               ? "Vale para as próximas ocorrências. As já lançadas não mudam."
+              : installment
+              ? "Parcela: só as etiquetas mudam, em todas as parcelas da compra."
               : isEditing
               ? "Atualize os dados desta transação."
               : `Registre ${
@@ -226,6 +231,7 @@ export function TransactionModal({
                 id="transaction-note"
                 value={note}
                 maxLength={500}
+                disabled={installment}
                 onChange={(event) => setNote(event.target.value)}
               />
             </Field>
@@ -233,6 +239,7 @@ export function TransactionModal({
               <Field label="Tipo" htmlFor="transaction-type">
                 <Select
                   value={transactionType}
+                  disabled={installment}
                   onValueChange={(value) =>
                     setTransactionType(value as typeof transactionType)
                   }
@@ -253,6 +260,7 @@ export function TransactionModal({
                 value={amount}
                 onValueChange={setAmount}
                 required
+                disabled={installment}
                 autoFocus
               />
             </Field>
@@ -263,6 +271,7 @@ export function TransactionModal({
                   value={date}
                   onChange={setDate}
                   required
+                  disabled={installment}
                 />
               </Field>
             )}
@@ -271,6 +280,7 @@ export function TransactionModal({
                 value={accountId}
                 onValueChange={setAccountId}
                 required
+                disabled={installment}
               >
                 <SelectTrigger id="transaction-account">
                   <SelectValue placeholder="Escolha uma conta" />

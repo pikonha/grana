@@ -234,6 +234,35 @@ describe("TransactionModal", () => {
     );
   });
 
+  it("locks everything but tags when editing a parcela", () => {
+    render(
+      <TransactionModal
+        type="expend"
+        installment
+        accounts={accounts}
+        categories={categories}
+        trigger={<button type="button">Editar</button>}
+        initialTransaction={{
+          id: "33333333-3333-4333-8333-333333333333",
+          type: "expend",
+          amount: 4567,
+          date: "2026-07-15",
+          tags: [],
+          accountId: accounts[0].id,
+          note: "Notebook",
+        }}
+        onUpdate={vi.fn()}
+        onCreateCategory={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    const dialog = screen.getByRole("dialog");
+    for (const label of ["Nome", "Valor (R$)", "Tipo", "Conta"]) {
+      expect((within(dialog).getByLabelText(label) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
   it("keeps the modal open and shows server errors", async () => {
     render(
       <TransactionModal

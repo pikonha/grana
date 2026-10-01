@@ -41,6 +41,10 @@ export async function updateTransactionCore(userId: string, input: UpdateTransac
   const tagIds = inputTagIds(input)
   await assertOwnedTags(userId, tagIds)
   await assertOwnedAccounts(userId, [input.account_id])
+  const [existing] = await db.select({ planId: transaction.installmentPlanId }).from(transaction)
+    .where(and(eq(transaction.id, input.id), eq(transaction.userId, userId)))
+  // Installment rows keep amount/date/etc. (SUM(rows) === plan total); only tags change, on every parcela.
+  if (existing?.planId) return setInstallmentPlanTags(userId, existing.planId, tagIds).then(() => ({ id: input.id }))
   return db.transaction(async (tx) => {
     const [row] = await tx.update(transaction).set({
       type: input.type,
@@ -59,6 +63,16 @@ export async function updateTransactionCore(userId: string, input: UpdateTransac
     await tx.delete(transactionTag).where(eq(transactionTag.transactionId, row.id))
     if (tagIds.length) await tx.insert(transactionTag).values(transactionTagRows(row.id, tagIds))
     return { id: row.id }
+  })
+}
+
+async function setInstallmentPlanTags(userId: string, planId: string, tagIds: string[]) {
+  await db.transaction(async (tx) => {
+    const rows = await tx.select({ id: transaction.id }).from(transaction)
+      .where(and(eq(transaction.installmentPlanId, planId), eq(transaction.userId, userId)))
+    const ids = rows.map((row) => row.id)
+    await tx.delete(transactionTag).where(inArray(transactionTag.transactionId, ids))
+    if (tagIds.length) await tx.insert(transactionTag).values(ids.flatMap((id) => transactionTagRows(id, tagIds)))
   })
 }
 

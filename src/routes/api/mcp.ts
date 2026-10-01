@@ -68,7 +68,7 @@ function buildServer(userId: string) {
     return text(await createTransactionCore(userId, data))
   })
 
-  server.registerTool('update_transaction', { description: 'Update a transaction (installment rows cannot be edited)', inputSchema: updateTransactionInput }, async (data) => {
+  server.registerTool('update_transaction', { description: 'Update a transaction. On an installment row only tag_ids apply, to every installment of the plan; other fields are ignored', inputSchema: updateTransactionInput }, async (data) => {
     return text(await updateTransactionCore(userId, data))
   })
 
