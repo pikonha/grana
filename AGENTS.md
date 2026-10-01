@@ -179,7 +179,7 @@ Accounts with `wallet_address` set are crypto accounts (`sync_kind` `wallet` = B
 Web service + Postgres. Migrations run automatically: the `api` service's pre-deploy command is `pnpm drizzle-kit migrate`, tracked in `drizzle.__drizzle_migrations`. No manual step on merge. No cron service: `listTransactions` calls `materializeDueRules` on every read (idempotent, catches up missed days).
 
 ## Deploy status (live)
-- Project `finances` (workspace "lucas picollo's Projects"), env `production`. App URL: https://api-production-0617.up.railway.app
+- Project `grana` (workspace `pikonha`), env `production`. App URL: https://grana.up.railway.app. Repo: `pikonha/grana` (deploys from `main`).
 - Services: `api` (web), `Postgres`. Migrations applied through pre-deploy. Secrets set on `api`.
 - Verified live: SSR 200, webhook 401/400/201.
 
