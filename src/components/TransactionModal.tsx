@@ -4,7 +4,7 @@ import type {
   CreateTransactionInput,
   UpdateTransactionInput,
 } from "#/server/schemas";
-import { CategorySelect } from "./CategorySelect";
+import { CategorySelect, type CategorySelectProps } from "./CategorySelect";
 import { MoneyInput } from "./MoneyInput";
 import { Button } from "./ui/button";
 import {
@@ -56,6 +56,7 @@ type TransactionModalProps = {
   onCreate?: (data: CreateTransactionInput) => Promise<unknown>;
   onUpdate?: (data: UpdateTransactionInput) => Promise<unknown>;
   onCreateCategory: (name: string, color: string) => Promise<string>;
+  onDeleteCategory?: CategorySelectProps["onDelete"];
 };
 
 const today = () => localDateKey();
@@ -69,6 +70,7 @@ export function TransactionModal({
   onCreate,
   onUpdate,
   onCreateCategory,
+  onDeleteCategory,
 }: TransactionModalProps) {
   const [open, setOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<"earn" | "expend">(
@@ -282,6 +284,7 @@ export function TransactionModal({
                 value={tagIds}
                 onChange={setTagIds}
                 onCreate={onCreateCategory}
+                onDelete={onDeleteCategory}
               />
             </div>
             {!isEditing && (

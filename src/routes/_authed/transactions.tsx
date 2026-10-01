@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, EyeOff, Pencil, RefreshCw, ThumbsUp, Trash2 } from "lucide-react";
 import { listAccounts } from "#/server/accounts";
-import { createCategory, listCategories } from "#/server/categories";
+import { createCategory, deleteCategory, listCategories } from "#/server/categories";
 import {
   createTransaction,
   createTransfer,
@@ -243,6 +243,23 @@ function Transactions() {
     onSettled: refresh,
   });
 
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (data: { id: string; replacementId?: string | null }) =>
+      deleteCategory({ data }),
+    // Not returned: a returned promise makes mutateAsync wait for the refetches,
+    // which delayed the "move to which tag?" dialog. The probe call deletes nothing.
+    onSuccess: ({ deleted }) => {
+      if (!deleted) return;
+      for (const queryKey of [
+        financeQueryKeys.categories,
+        financeQueryKeys.transactions,
+        financeQueryKeys.recurrenceRules,
+      ])
+        void qc.invalidateQueries({ queryKey });
+    },
+  });
+  const removeCategory = (id: string, replacementId?: string | null) =>
+    deleteCategoryMutation.mutateAsync({ id, replacementId });
   const createCategoryMutation = useMutation({
     mutationFn: (data: { name: string; color: string }) =>
       createCategory({ data }),
@@ -618,6 +635,7 @@ function Transactions() {
                 onCreate={async (name, color) =>
                   (await createCategoryMutation.mutateAsync({ name, color })).id
                 }
+                onDelete={removeCategory}
               />
             </Field>
             <Field label="Conta">
@@ -887,6 +905,7 @@ function Transactions() {
                                   })
                                 ).id
                               }
+                              onDeleteCategory={removeCategory}
                               trigger={
                                 <Button
                                   type="button"

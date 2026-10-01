@@ -167,4 +167,33 @@ describe("CategorySelect", () => {
     act(() => screen.getByRole("button", { name: "Next field" }).focus());
     expect(screen.queryByRole("listbox")).toBeNull();
   });
+
+  it("asks where to move an in-use tag before deleting it", async () => {
+    const onChange = vi.fn();
+    const onDelete = vi
+      .fn()
+      .mockResolvedValueOnce({ deleted: false, inUse: 3 })
+      .mockResolvedValueOnce({ deleted: true, inUse: 0 });
+    render(
+      <CategorySelect
+        categories={[tag("food-id", "Food"), tag("travel-id", "Travel")]}
+        value={["food-id"]}
+        onChange={onChange}
+        onCreate={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Etiquetas: Food" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir etiqueta Food" }));
+
+    expect(await screen.findByText(/está em 3 lançamentos/)).toBeTruthy();
+    expect(onDelete).toHaveBeenLastCalledWith("food-id", undefined);
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+
+    await waitFor(() => expect(onDelete).toHaveBeenLastCalledWith("food-id", "travel-id"));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(["travel-id"]));
+    await waitFor(() => expect(screen.queryByText(/está em 3 lançamentos/)).toBeNull());
+  });
 });

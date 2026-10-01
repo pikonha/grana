@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, BarChart3, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { createAccount, listAccounts } from "#/server/accounts";
-import { createCategory, listCategories } from "#/server/categories";
+import { createCategory, deleteCategory, listCategories } from "#/server/categories";
 import { listFaturas } from "#/server/faturas";
 import {
   createTransaction,
@@ -128,6 +128,23 @@ function Dashboard() {
         }),
       ]),
   });
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (data: { id: string; replacementId?: string | null }) =>
+      deleteCategory({ data }),
+    // Not returned: a returned promise makes mutateAsync wait for the refetches,
+    // which delayed the "move to which tag?" dialog. The probe call deletes nothing.
+    onSuccess: ({ deleted }) => {
+      if (!deleted) return;
+      for (const queryKey of [
+        financeQueryKeys.categories,
+        financeQueryKeys.transactions,
+        financeQueryKeys.recurrenceRules,
+      ])
+        void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+  const removeCategory = (id: string, replacementId?: string | null) =>
+    deleteCategoryMutation.mutateAsync({ id, replacementId });
   const createCategoryMutation = useMutation({
     mutationFn: (data: { name: string; color: string }) => createCategory({ data }),
     onMutate: async ({ name, color }) => {
@@ -229,6 +246,7 @@ function Dashboard() {
             onCreateCategory={async (name, color) =>
               (await createCategoryMutation.mutateAsync({ name, color })).id
             }
+            onDeleteCategory={removeCategory}
           />
           <TransactionModal
             type="expend"
@@ -238,6 +256,7 @@ function Dashboard() {
             onCreateCategory={async (name, color) =>
               (await createCategoryMutation.mutateAsync({ name, color })).id
             }
+            onDeleteCategory={removeCategory}
           />
           <TransferModal
             compact

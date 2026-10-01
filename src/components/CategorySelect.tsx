@@ -1,7 +1,24 @@
 import { useId, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Check, ChevronDown, LoaderCircle, Plus, Search } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, Plus, Search, Trash2 } from "lucide-react";
 import { DEFAULT_TAG_COLOR } from "#/lib/tag-colors";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  EMPTY_SELECT_VALUE,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type CategoryOption = {
@@ -10,11 +27,16 @@ type CategoryOption = {
   color: string;
 };
 
-type CategorySelectProps = {
+export type CategorySelectProps = {
   categories: CategoryOption[];
   value: string[];
   onChange: (ids: string[]) => void;
   onCreate: (name: string, color: string) => Promise<string>;
+  /** Without replacementId the tag is only deleted when unused; otherwise `inUse` comes back. */
+  onDelete?: (
+    id: string,
+    replacementId?: string | null,
+  ) => Promise<{ deleted: boolean; inUse: number }>;
 };
 
 export function CategorySelect({
@@ -22,6 +44,7 @@ export function CategorySelect({
   value,
   onChange,
   onCreate,
+  onDelete,
 }: CategorySelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -30,13 +53,16 @@ export function CategorySelect({
   const [error, setError] = useState("");
   const [newColor, setNewColor] = useState<string>(DEFAULT_TAG_COLOR);
   const [createdCategories, setCreatedCategories] = useState<CategoryOption[]>([]);
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<{ category: CategoryOption; inUse: number } | null>(null);
+  const [replacement, setReplacement] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
 
   const options = useMemo(() => {
     const byId = new Map([...createdCategories, ...categories].map((category) => [category.id, category]));
-    return [...byId.values()];
-  }, [categories, createdCategories]);
+    return [...byId.values()].filter((category) => !deletedIds.includes(category.id));
+  }, [categories, createdCategories, deletedIds]);
 
   const normalizedQuery = query.trim();
   const exactMatch = options.find(
@@ -105,9 +131,35 @@ export function CategorySelect({
     }
   };
 
+  const remove = async (category: CategoryOption, replacementId?: string | null) => {
+    if (!onDelete || isSaving) return;
+    setIsSaving(true);
+    setError("");
+    try {
+      const result = await onDelete(category.id, replacementId);
+      if (!result.deleted) {
+        setReplacement(options.find((option) => option.id !== category.id)?.id ?? "");
+        setPendingDelete({ category, inUse: result.inUse });
+        setOpen(false);
+        return;
+      }
+      setDeletedIds((current) => [...current, category.id]);
+      if (value.includes(category.id)) {
+        const next = value.filter((id) => id !== category.id);
+        onChange(replacementId && !next.includes(replacementId) ? [...next, replacementId] : next);
+      }
+      setPendingDelete(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível excluir a etiqueta");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Radix Popover, not a hand-rolled portal: inside a Dialog it joins the layer and
   // focus-scope stacks, so clicks and typing in it don't dismiss or refocus the Dialog.
   return (
+    <>
     <Popover.Root open={open} onOpenChange={(next) => (next ? openDropdown() : close())}>
       <Popover.Trigger asChild>
       <button
@@ -212,6 +264,7 @@ export function CategorySelect({
                 label={category.name}
                 color={category.color}
                 onClick={() => select(category.id)}
+                onDelete={onDelete && (() => void remove(category))}
               />
             ))}
             {normalizedQuery && filteredCategories.length === 0 && (
@@ -258,6 +311,67 @@ export function CategorySelect({
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+
+    <Dialog
+      open={!!pendingDelete}
+      onOpenChange={(next) => {
+        if (next || isSaving) return;
+        setPendingDelete(null);
+        setError("");
+      }}
+    >
+      {pendingDelete && (
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir etiqueta</DialogTitle>
+            <DialogDescription>
+              "{pendingDelete.category.name}" está em {pendingDelete.inUse}{" "}
+              {pendingDelete.inUse === 1 ? "lançamento" : "lançamentos"}. Para qual etiqueta
+              eles vão?
+            </DialogDescription>
+          </DialogHeader>
+          <Select
+            value={replacement || EMPTY_SELECT_VALUE}
+            onValueChange={(next) => setReplacement(next === EMPTY_SELECT_VALUE ? "" : next)}
+          >
+            <SelectTrigger aria-label="Etiqueta de destino">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options
+                .filter((option) => option.id !== pendingDelete.category.id)
+                .map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              <SelectItem value={EMPTY_SELECT_VALUE}>Nenhuma (só remover a etiqueta)</SelectItem>
+            </SelectContent>
+          </Select>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <div className="mt-5 flex justify-end gap-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={isSaving}>
+                Cancelar
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isSaving}
+              onClick={() => void remove(pendingDelete.category, replacement || null)}
+            >
+              Excluir
+            </Button>
+          </div>
+        </DialogContent>
+      )}
+    </Dialog>
+    </>
   );
 }
 
@@ -268,6 +382,7 @@ function CategoryOptionButton({
   color,
   selected,
   onClick,
+  onDelete,
 }: {
   id: string;
   active: boolean;
@@ -275,8 +390,9 @@ function CategoryOptionButton({
   color: string;
   selected: boolean;
   onClick: () => void;
+  onDelete?: () => void;
 }) {
-  return (
+  const option = (
     <button
       type="button"
       id={id}
@@ -297,5 +413,20 @@ function CategoryOptionButton({
       </span>
       {selected && <Check aria-hidden="true" className="size-4 shrink-0" />}
     </button>
+  );
+  if (!onDelete) return option;
+  return (
+    <div className="flex items-center">
+      <div className="min-w-0 flex-1">{option}</div>
+      <button
+        type="button"
+        aria-label={`Excluir etiqueta ${label}`}
+        title="Excluir etiqueta"
+        className="flex size-9 shrink-0 cursor-pointer items-center justify-center text-muted-foreground outline-none hover:text-destructive focus-visible:text-destructive"
+        onClick={onDelete}
+      >
+        <Trash2 aria-hidden="true" className="size-4" />
+      </button>
+    </div>
   );
 }
