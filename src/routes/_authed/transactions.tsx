@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, RefreshCw, ThumbsUp, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, RefreshCw, ThumbsUp, Trash2 } from "lucide-react";
 import { listAccounts } from "#/server/accounts";
 import { createCategory, listCategories } from "#/server/categories";
 import {
@@ -36,7 +36,7 @@ import {
   optimisticUpdatedTransaction,
   optimisticTransfer,
 } from "#/lib/optimistic";
-import { isPaymentTrackable, signedAmount } from "#/lib/money";
+import { balanceOf, isPaymentTrackable, prepaidBalanceOf, signedAmount } from "#/lib/money";
 import { localMonthKey, scheduledDatesInMonth } from "#/lib/recurrence";
 import { transferNote } from "#/lib/transaction-labels";
 import { CategorySelect } from "@/components/CategorySelect";
@@ -173,6 +173,7 @@ function Transactions() {
   const [repeat, setRepeat] = useState<Repeat>("none");
   const [count, setCount] = useState("2");
   const [activeMonth, setActiveMonth] = useState(localMonthKey);
+  const [showValues, setShowValues] = useState(true);
   const [filterAccount, setFilterAccount] = useState("");
   const [visible, setVisible] = useState(PAGE_SIZE);
   const sentinel = useRef<HTMLDivElement>(null);
@@ -494,18 +495,52 @@ function Transactions() {
     0,
   );
 
+  // Current/future month: overall balance, same numbers as the dashboard.
+  // Past months: balance as of that month's end.
+  const balanceRows =
+    activeMonth < localMonthKey()
+      ? transactions.filter((tx) => tx.date.slice(0, 7) <= activeMonth)
+      : transactions;
+  const balance = filterAccount
+    ? prepaidBalanceOf(filterAccount, balanceRows)
+    : balanceOf(
+        balanceRows.filter(
+          (tx): tx is typeof tx & { type: "earn" | "expend" } =>
+            tx.type !== "transfer" && tx.paid,
+        ),
+      );
+  const displayMoney = (cents: number) =>
+    showValues ? money(cents) : "••••••";
+
   return (
     <main className="page-wrap rise-in py-6 sm:py-10">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="display-title text-3xl font-bold sm:text-4xl">
           Transações
         </h1>
-        <TransferModal
-          accounts={accounts}
-          onTransfer={async (data) => {
-            await transfer.mutateAsync(data);
-          }}
-        />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setShowValues((current) => !current)}
+            aria-pressed={!showValues}
+            aria-label={showValues ? "Ocultar valores" : "Mostrar valores"}
+            title={showValues ? "Ocultar valores" : "Mostrar valores"}
+          >
+            {showValues ? (
+              <EyeOff className="size-4" />
+            ) : (
+              <Eye className="size-4" />
+            )}
+          </Button>
+          <TransferModal
+            accounts={accounts}
+            onTransfer={async (data) => {
+              await transfer.mutateAsync(data);
+            }}
+          />
+        </div>
       </div>
 
       <Card className="mb-6">
@@ -658,12 +693,18 @@ function Transactions() {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <CardTitle>Todas as transações</CardTitle>
-            {pendingRows.length > 0 && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">Pendente: </span>
-                <span className="font-bold tabular-nums">{money(pendingTotal)}</span>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              {pendingRows.length > 0 && (
+                <div>
+                  <span className="text-muted-foreground">Pendente: </span>
+                  <span className="font-bold tabular-nums">{displayMoney(pendingTotal)}</span>
+                </div>
+              )}
+              <div>
+                <span className="text-muted-foreground">Saldo: </span>
+                <span className="font-bold tabular-nums">{displayMoney(balance)}</span>
               </div>
-            )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -781,7 +822,7 @@ function Transactions() {
                         )}
                         <span>
                           {signedPrefix(row.type)}
-                          {money(row.amount)}
+                          {displayMoney(row.amount)}
                         </span>
                       </div>
                     </TableCell>
