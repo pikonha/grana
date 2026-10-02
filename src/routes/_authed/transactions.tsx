@@ -172,6 +172,7 @@ function Transactions() {
   const [type, setType] = useState<"earn" | "expend">("expend");
   const [amount, setAmount] = useState<number | null>(null);
   const [date, setDate] = useState(localDateKey);
+  const [time, setTime] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [accountId, setAccountId] = useState("");
   const [note, setNote] = useState("");
@@ -218,6 +219,7 @@ function Transactions() {
     onSuccess: () => {
       setAmount(null);
       setNote("");
+      setTime("");
       setRepeat("none");
     },
     onSettled: refresh,
@@ -586,6 +588,8 @@ function Transactions() {
                 type,
                 amount,
                 date,
+                // Parcelas and recurrences are day-only.
+                time: repeat === "none" && time ? time : undefined,
                 tag_ids: tagIds.length ? tagIds : undefined,
                 account_id: accountId,
                 note: note || undefined,
@@ -639,6 +643,16 @@ function Transactions() {
                 required
               />
             </Field>
+            {repeat === "none" && (
+              <Field label="Hora (opcional)" htmlFor="transaction-page-time">
+                <Input
+                  id="transaction-page-time"
+                  type="time"
+                  value={time}
+                  onChange={(event) => setTime(event.target.value)}
+                />
+              </Field>
+            )}
             <Field label="Etiquetas">
               <CategorySelect
                 categories={categories}
