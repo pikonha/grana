@@ -1,4 +1,4 @@
-import { boolean, date, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, integer, jsonb, pgEnum, pgTable, primaryKey, text, time, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 import { authUser } from './auth-schema'
 
 export const txTypeEnum = pgEnum('tx_type', ['earn', 'expend', 'transfer'])
@@ -48,6 +48,8 @@ export const installmentPlan = pgTable('installment_plan', {
 export const transaction = pgTable('transaction', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(), type: txTypeEnum().notNull(),
   amount: integer().notNull(), date: date().notNull(),
+  /** Wall-clock time in the app timezone (America/Sao_Paulo); null = only the day is known. */
+  time: time(),
   // Every transaction belongs to an account; deleting an account in use is refused.
   accountId: uuid('account_id').notNull().references(() => account.id, { onDelete: 'restrict' }),
   counterAccountId: uuid('counter_account_id').references(() => account.id, { onDelete: 'restrict' }),

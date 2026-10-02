@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { installmentPlan, recurrenceRule, tag, transaction, transactionTag, type RecurrenceRule, type Tag, type Transaction } from '#/db/schema'
 import { assertMoney, paidByDate } from '#/lib/money'
@@ -21,7 +21,7 @@ export const listTransactions = createServerFn({ method: 'GET' }).handler(async 
   // ponytail: lazy materialization on read replaces the daily cron job — idempotent
   // and catches up missed days, so rules are current whenever anyone looks.
   await materializeDueRules(appToday(), userId)
-  const rows = await db.select().from(transaction).where(eq(transaction.userId, userId)).orderBy(desc(transaction.date), desc(transaction.createdAt))
+  const rows = await db.select().from(transaction).where(eq(transaction.userId, userId)).orderBy(desc(transaction.date), sql`${transaction.time} desc nulls last`, desc(transaction.createdAt))
   const groupedTags = await tagsByTransaction(rows.map((row) => row.id))
   return rows.map((row) => ({ ...row, tags: groupedTags.get(row.id) ?? [] }))
 })
@@ -119,7 +119,7 @@ export const importTransactions = createServerFn({ method: 'POST' })
     const todayISO = new Date().toISOString().slice(0, 10)
     return db.transaction(async (tx) => {
       const inserted = await tx.insert(transaction).values(data.map((row) => ({
-        userId, type: row.type, amount: row.amount, date: row.date,
+        userId, type: row.type, amount: row.amount, date: row.date, time: row.time ?? null,
         accountId: row.account_id, note: row.note ?? null,
         paid: row.paid ?? paidByDate(row.date, todayISO),
       }))).returning({ id: transaction.id })

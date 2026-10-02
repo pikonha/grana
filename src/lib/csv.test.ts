@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { dupKey, normalizeForMatch, normalizeHeader, parseCSV, sniffDelimiter, toCents, toIsoDate } from './csv'
+import { dupKey, normalizeForMatch, normalizeHeader, parseCSV, sniffDelimiter, toCents, toIsoDate, toTime } from './csv'
 
 describe('parseCSV', () => {
   test('basic comma-delimited', () => {
@@ -94,6 +94,17 @@ describe('toIsoDate', () => {
   })
 })
 
+describe('toTime', () => {
+  test('normalizes to HH:MM', () => {
+    expect(toTime('14:32')).toBe('14:32')
+    expect(toTime('9:05')).toBe('09:05')
+    expect(toTime('23:59:59')).toBe('23:59')
+  })
+  test('rejects invalid', () => {
+    for (const raw of ['24:00', '12:60', '1432', 'meio-dia']) expect(toTime(raw)).toBeNull()
+  })
+})
+
 describe('normalizeForMatch', () => {
   test('trim and lowercase', () => {
     expect(normalizeForMatch('  Hello  ')).toBe('hello')
@@ -112,6 +123,10 @@ describe('normalizeHeader', () => {
     expect(map.get('categoria')).toBe(2)
     expect(map.get('conta')).toBe(3)
     expect(map.get('nota')).toBe(4)
+  })
+  test('time column', () => {
+    expect(normalizeHeader(['data', 'hora', 'valor']).get('hora')).toBe(1)
+    expect(normalizeHeader(['date', 'time', 'amount']).get('hora')).toBe(1)
   })
   test('English header', () => {
     const map = normalizeHeader(['date', 'amount', 'category', 'account', 'note'])

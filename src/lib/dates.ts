@@ -9,6 +9,11 @@ export function appToday(now = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone }).format(now)
 }
 
+/** HH:MM (24h) in the app timezone. */
+export function appTime(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now)
+}
+
 /** YYYY-MM in the app timezone. */
 export function appMonthKey(): string {
   return appToday().slice(0, 7)

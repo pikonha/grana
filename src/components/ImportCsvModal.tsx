@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Upload } from "lucide-react";
 import type { TransactionRow } from "#/server/transactions";
-import { CSV_TEMPLATE, dupKey, normalizeForMatch, normalizeHeader, parseCSV, sniffDelimiter, toCents, toIsoDate } from "#/lib/csv";
+import { CSV_TEMPLATE, dupKey, normalizeForMatch, normalizeHeader, parseCSV, sniffDelimiter, toCents, toIsoDate, toTime } from "#/lib/csv";
 import { formatCentsBRL } from "#/lib/money";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -10,7 +10,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
 type AccountOption = { id: string; name: string };
-type ParsedRow = { line: number; date: string; amount: number; type: "earn" | "expend"; categoria: string; conta: string; nota: string; error?: string; isDup?: boolean; includeDup?: boolean };
+type ParsedRow = { line: number; date: string; time?: string; amount: number; type: "earn" | "expend"; categoria: string; conta: string; nota: string; error?: string; isDup?: boolean; includeDup?: boolean };
 
 export function ImportCsvModal({
   transactions,
@@ -20,7 +20,7 @@ export function ImportCsvModal({
 }: {
   transactions: TransactionRow[];
   accounts: AccountOption[];
-  onImport: (rows: { type: "earn" | "expend"; amount: number; date: string; tag_names?: string[]; account_id: string; note?: string }[]) => Promise<{ count: number }>;
+  onImport: (rows: { type: "earn" | "expend"; amount: number; date: string; time?: string; tag_names?: string[]; account_id: string; note?: string }[]) => Promise<{ count: number }>;
   onCreateAccount: (name: string) => Promise<string>;
 }) {
   const [open, setOpen] = useState(false);
@@ -72,6 +72,7 @@ export function ImportCsvModal({
     const categoriaIdx = headerMap.get("categoria");
     const contaIdx = headerMap.get("conta");
     const notaIdx = headerMap.get("nota");
+    const horaIdx = headerMap.get("hora");
     const accountNormMap = new Map<string, string>();
     for (const acc of accounts) accountNormMap.set(normalizeForMatch(acc.name), acc.id);
     const existingDups = new Set(transactions.map((t) => dupKey(t.date, t.type, t.amount)));
@@ -86,6 +87,8 @@ export function ImportCsvModal({
       const conta = contaIdx !== undefined ? (row[contaIdx] ?? "").trim() : "";
       const nota = notaIdx !== undefined ? (row[notaIdx] ?? "").trim() : "";
       const date = toIsoDate(dateRaw);
+      const horaRaw = horaIdx !== undefined ? (row[horaIdx] ?? "").trim() : "";
+      const time = horaRaw ? toTime(horaRaw) : undefined;
       const cents = toCents(valorRaw);
       if (!date) {
         newRows.push({ line, date: "", amount: 0, type: "expend", categoria, conta, nota, error: "Data inválida" });
@@ -98,12 +101,13 @@ export function ImportCsvModal({
       const type = cents < 0 ? "expend" : "earn";
       const amount = Math.abs(cents);
       let error: string | undefined;
-      if (!conta) error = "Conta obrigatória";
+      if (time === null) error = "Hora inválida";
+      else if (!conta) error = "Conta obrigatória";
       else if (!accountNormMap.has(normalizeForMatch(conta))) error = "Conta desconhecida";
       const key = dupKey(date, type, amount);
       const isDup = existingDups.has(key) || fileDups.has(key);
       fileDups.add(key);
-      newRows.push({ line, date, amount, type, categoria, conta, nota, error, isDup, includeDup: !isDup });
+      newRows.push({ line, date, time: time ?? undefined, amount, type, categoria, conta, nota, error, isDup, includeDup: !isDup });
     }
     if (newRows.length > 1000) {
       setError("Máximo de 1000 linhas permitido");
@@ -138,6 +142,7 @@ export function ImportCsvModal({
         type: r.type,
         amount: r.amount,
         date: r.date,
+        time: r.time,
         tag_names: r.categoria ? [r.categoria] : undefined,
         // canSubmit guarantees every valid row has a known conta.
         account_id: accountNormMap.get(normalizeForMatch(r.conta))!,
@@ -181,6 +186,7 @@ export function ImportCsvModal({
                 <thead><tr className="border-b"><th className="px-2 py-1 text-left">Coluna</th><th className="px-2 py-1 text-left">Obrigatório</th><th className="px-2 py-1 text-left">Formato</th></tr></thead>
                 <tbody>
                   <tr><td className="px-2 py-1">data</td><td className="px-2 py-1">Sim</td><td className="px-2 py-1">2026-07-01 ou 01/07/2026 (DD/MM)</td></tr>
+                  <tr><td className="px-2 py-1">hora</td><td className="px-2 py-1">Não</td><td className="px-2 py-1">14:32 (horário de Brasília)</td></tr>
                   <tr><td className="px-2 py-1">valor</td><td className="px-2 py-1">Sim</td><td className="px-2 py-1">1.234,56 ou 1234.56 (+ receita, - despesa)</td></tr>
                   <tr><td className="px-2 py-1">categoria</td><td className="px-2 py-1">Não</td><td className="px-2 py-1">Nome (criado se não existir)</td></tr>
                   <tr><td className="px-2 py-1">conta</td><td className="px-2 py-1">Sim</td><td className="px-2 py-1">Nome (deve existir)</td></tr>
@@ -228,7 +234,7 @@ export function ImportCsvModal({
                   {finalRows.map((r, idx) => (
                     <tr key={idx} className={`border-b ${r.error ? "bg-destructive/10" : r.isDup && !r.includeDup ? "bg-muted" : ""}`}>
                       <td className="px-2 py-1">{r.line}</td>
-                      <td className="px-2 py-1">{r.date || "—"}</td>
+                      <td className="px-2 py-1">{r.date ? `${r.date}${r.time ? ` ${r.time}` : ""}` : "—"}</td>
                       <td className="px-2 py-1">{r.type === "earn" ? "Receita" : "Despesa"}</td>
                       <td className="px-2 py-1">{r.amount ? formatCentsBRL(r.amount) : "—"}</td>
                       <td className="px-2 py-1">{r.categoria || "—"}</td>

@@ -54,12 +54,16 @@ describe("TransferModal", () => {
     fireEvent.click(
       screen.getByRole("gridcell", { name: pickedDateLabel })
     );
+    fireEvent.change(within(dialog).getByLabelText("Hora (opcional)"), {
+      target: { value: "08:05" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Transferir" }));
 
     await waitFor(() =>
       expect(onTransfer).toHaveBeenCalledWith({
         amount: 1234,
         date: pickedDateKey,
+        time: "08:05",
         account_id: accounts[0].id,
         counter_account_id: accounts[1].id,
         note: "Transferência",

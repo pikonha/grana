@@ -7,6 +7,10 @@ describe('createTransactionInput',()=>{
   it('accepts installments',()=>expect(createTransactionInput.safeParse({...base,installments:{count:3}}).success).toBe(true))
   it('rejects recurrence with installments',()=>expect(createTransactionInput.safeParse({...base,installments:{count:3},recurrence:{interval:'monthly'}}).success).toBe(false))
   it('rejects one installment',()=>expect(createTransactionInput.safeParse({...base,installments:{count:1}}).success).toBe(false))
+  it('accepts HH:MM times only',()=>{
+    expect(createTransactionInput.safeParse({...base,time:'23:59'}).success).toBe(true)
+    for (const time of ['24:00','9:30','12:60','12:30:00']) expect(webhookTransactionInput.safeParse({...base,time}).success).toBe(false)
+  })
 })
 describe('transferInput',()=>{
   const transferBase={amount:1200,date:'2026-07-11',account_id:'11111111-1111-4111-8111-111111111111',counter_account_id:'22222222-2222-4222-8222-222222222222'}

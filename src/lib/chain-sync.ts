@@ -2,7 +2,7 @@
  * Pure mapping + matching for crypto account sync (no I/O). The fetch/db side
  * lives in `#/server/chain-sync.core.ts`. See docs/superpowers/specs/2026-09-24-crypto-sync-design.md.
  */
-import { addDays, appToday } from './dates'
+import { addDays, appTime, appToday } from './dates'
 import { assertMoney } from './money'
 import { DEFAULT_TRANSFER_NOTE } from './transaction-labels'
 
@@ -39,7 +39,7 @@ export type PlanInput = {
 
 export type SyncRow = {
   externalId: string; type: 'earn' | 'expend' | 'transfer'; amount: number; usdAmount: number
-  date: string; accountId: string; counterAccountId: string | null; note: string | null
+  date: string; time: string; accountId: string; counterAccountId: string | null; note: string | null
 }
 export type SyncPlan = { inserts: SyncRow[]; claims: { id: string; externalId: string; usdAmount: number }[] }
 
@@ -138,7 +138,7 @@ export function planSync(input: PlanInput): SyncPlan {
     const date = dateOf(e.timeStamp)
     return {
       externalId: externalIdOf(e), type, amount: toBrlCents(usdAmount, ptaxFor(date, rates)),
-      usdAmount: assertMoney(usdAmount), date, accountId: account.id, counterAccountId: null, note: null, ...extra,
+      usdAmount: assertMoney(usdAmount), date, time: appTime(new Date(e.timeStamp * 1000)), accountId: account.id, counterAccountId: null, note: null, ...extra,
     }
   }
 

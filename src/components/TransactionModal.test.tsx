@@ -73,6 +73,9 @@ describe("TransactionModal", () => {
     fireEvent.change(within(dialog).getByLabelText("Nome"), {
       target: { value: "Paycheck" },
     });
+    fireEvent.change(within(dialog).getByLabelText("Hora (opcional)"), {
+      target: { value: "14:32" },
+    });
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Adicionar transação" })
     );
@@ -82,6 +85,7 @@ describe("TransactionModal", () => {
         type: "earn",
         amount: 1234,
         date: initialDate,
+        time: "14:32",
         tag_ids: [categories[0].id],
         account_id: accounts[0].id,
         note: "Paycheck",

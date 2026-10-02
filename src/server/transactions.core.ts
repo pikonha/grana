@@ -27,7 +27,7 @@ export async function createTransactionCore(userId: string, input: TransactionIn
   const todayISO = new Date().toISOString().slice(0, 10)
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(transaction).values({
-      userId, type: input.type, amount: input.amount, date: input.date,
+      userId, type: input.type, amount: input.amount, date: input.date, time: input.time ?? null,
       accountId: input.account_id, note: input.note ?? null,
       paid: input.paid ?? paidByDate(input.date, todayISO),
     }).returning({ id: transaction.id })
@@ -50,6 +50,7 @@ export async function updateTransactionCore(userId: string, input: UpdateTransac
       type: input.type,
       amount: input.amount,
       date: input.date,
+      time: input.time ?? null,
       accountId: input.account_id,
       note: input.note ?? null,
     }).where(and(
@@ -80,7 +81,7 @@ export async function createTransferCore(userId: string, input: TransferInput) {
   assertMoney(input.amount)
   await assertOwnedAccounts(userId, [input.account_id, input.counter_account_id])
   const [row] = await db.insert(transaction).values({
-    userId, type: 'transfer', amount: input.amount, date: input.date,
+    userId, type: 'transfer', amount: input.amount, date: input.date, time: input.time ?? null,
     accountId: input.account_id, counterAccountId: input.counter_account_id, note: transferNote(input.note),
   }).returning({ id: transaction.id })
   return { id: row.id }
@@ -90,7 +91,7 @@ export async function updateTransferCore(userId: string, input: UpdateTransferIn
   assertMoney(input.amount)
   await assertOwnedAccounts(userId, [input.account_id, input.counter_account_id])
   const [row] = await db.update(transaction).set({
-    amount: input.amount, date: input.date,
+    amount: input.amount, date: input.date, time: input.time ?? null,
     accountId: input.account_id, counterAccountId: input.counter_account_id, note: transferNote(input.note),
   }).where(and(eq(transaction.id, input.id), eq(transaction.userId, userId), eq(transaction.type, 'transfer')))
     .returning({ id: transaction.id })

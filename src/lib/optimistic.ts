@@ -37,6 +37,7 @@ export function optimisticTransaction(
     type: input.type,
     amount: input.amount,
     date: input.date,
+    time: input.time ?? null,
     accountId: input.account_id ?? null,
     counterAccountId: null,
     installmentPlanId: null,
@@ -62,6 +63,7 @@ export function optimisticUpdatedTransaction(
     type: input.type,
     amount: input.amount,
     date: input.date,
+    time: input.time ?? null,
     accountId: input.account_id ?? null,
     note: input.note ?? null,
     tags: input.tag_ids
@@ -81,6 +83,7 @@ export function optimisticTransfer(
         type: "expend",
         amount: input.amount,
         date: input.date,
+        time: input.time,
         account_id: input.account_id,
         note: transferNote(input.note),
       },
@@ -135,6 +138,7 @@ export function optimisticCategory(
   return { id, userId: "optimistic", name, color };
 }
 
-export function newestTransactions<T extends { date: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => b.date.localeCompare(a.date));
+export function newestTransactions<T extends { date: string; time?: string | null }>(rows: T[]) {
+  // Untimed rows sort after timed ones on the same day, like the server's `nulls last`.
+  return [...rows].sort((a, b) => b.date.localeCompare(a.date) || (b.time ?? "").localeCompare(a.time ?? ""));
 }

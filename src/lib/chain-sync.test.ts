@@ -33,7 +33,7 @@ describe('planSync — wallet', () => {
     const plan = planSync(base({ transfers: [transfer()] }))
     expect(plan.inserts).toEqual([{
       externalId: '8453:0xaaa:3', type: 'earn', amount: 52500, usdAmount: 10000,
-      date: '2026-09-22', accountId: 'safe', counterAccountId: null, note: null,
+      date: '2026-09-22', time: '12:00', accountId: 'safe', counterAccountId: null, note: null, // 15:00Z is noon in São Paulo
     }])
     expect(plan.claims).toEqual([])
   })
@@ -97,7 +97,7 @@ describe('planSync — ether.fi Cash', () => {
     }))
     expect(plan.inserts).toEqual([{
       externalId: '10:0xbbb:7', type: 'expend', amount: 6484, usdAmount: 1235, // $12.345678 → 1235¢ × 5.25 = 6483.75
-      date: '2026-09-22', accountId: 'etherfi', counterAccountId: null, note: 'ether.fi Cash',
+      date: '2026-09-22', time: '12:00', accountId: 'etherfi', counterAccountId: null, note: 'ether.fi Cash',
     }])
   })
 

@@ -8,11 +8,14 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD
     const parsed = new Date(`${value}T00:00:00Z`)
     return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
   }, 'date must be a real calendar date')
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM')
 const cents = z.number().int('amount must be integer cents')
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color must be #RRGGBB').transform((color) => color.toLowerCase())
 
 export const transactionInput = z.object({
   type: z.enum(['earn', 'expend']), amount: cents.positive(), date: isoDate,
+  /** HH:MM, wall clock in America/Sao_Paulo. */
+  time: timeOfDay.optional(),
   tag_ids: z.array(z.string().uuid()).max(20).optional(),
   category_id: z.string().uuid().optional(),
   // Every transaction belongs to an account.
@@ -33,7 +36,7 @@ export type UpdateTransactionInput = z.infer<typeof updateTransactionInput>
 /** Edits the rule itself: applies to occurrences not generated yet. The schedule (date/interval) stays. */
 export const updateRecurrenceRuleInput = transactionInput.extend({
   id: z.string().uuid(),
-}).omit({ paid: true, date: true })
+}).omit({ paid: true, date: true, time: true })
 export type UpdateRecurrenceRuleInput = z.infer<typeof updateRecurrenceRuleInput>
 
 export const createTransactionInput = transactionInput.extend({
@@ -45,7 +48,7 @@ export const createTransactionInput = transactionInput.extend({
 export type CreateTransactionInput = z.infer<typeof createTransactionInput>
 
 const transferFields = z.object({
-  amount: cents.positive(), date: isoDate,
+  amount: cents.positive(), date: isoDate, time: timeOfDay.optional(),
   account_id: z.string().uuid(), counter_account_id: z.string().uuid(),
   note: z.string().max(500).optional().default(DEFAULT_TRANSFER_NOTE),
 })
@@ -94,7 +97,7 @@ export function inputTagIds(input: { tag_ids?: string[]; category_id?: string })
 }
 
 export const importTransactionsInput = z.array(z.object({
-  type: z.enum(['earn', 'expend']), amount: cents.positive(), date: isoDate,
+  type: z.enum(['earn', 'expend']), amount: cents.positive(), date: isoDate, time: timeOfDay.optional(),
   tag_names: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   account_id: z.string().uuid(),
   note: z.string().max(500).optional(),

@@ -26,6 +26,7 @@ function tx(overrides: Partial<TransactionRow>): TransactionRow {
     type: "expend",
     amount: 1000,
     date: dayThisMonth(10),
+    time: null,
     accountId: "a1",
     counterAccountId: null,
     externalId: null,

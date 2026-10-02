@@ -93,6 +93,13 @@ export function toIsoDate(raw: string): string | null {
   return date.toISOString().startsWith(iso) ? iso : null
 }
 
+/** H:MM, HH:MM or HH:MM:SS → HH:MM (seconds dropped); null if not a valid time. */
+export function toTime(raw: string): string | null {
+  const match = raw.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null
+  return `${match[1].padStart(2, '0')}:${match[2]}`
+}
+
 export function normalizeForMatch(text: string): string {
   return text
     .trim()
@@ -105,8 +112,8 @@ export function dupKey(date: string, type: string, amount: number): string {
   return `${date}|${type}|${amount}`
 }
 
-const PT_COLS = { data: 'data', valor: 'valor', categoria: 'categoria', conta: 'conta', nota: 'nota' }
-const EN_COLS = { date: 'data', amount: 'valor', category: 'categoria', account: 'conta', note: 'nota' }
+const PT_COLS = { data: 'data', hora: 'hora', valor: 'valor', categoria: 'categoria', conta: 'conta', nota: 'nota' }
+const EN_COLS = { date: 'data', time: 'hora', amount: 'valor', category: 'categoria', account: 'conta', note: 'nota' }
 export function normalizeHeader(header: string[]): Map<string, number> {
   const map = new Map<string, number>()
   for (let i = 0; i < header.length; i++) {
@@ -118,6 +125,6 @@ export function normalizeHeader(header: string[]): Map<string, number> {
   return map
 }
 
-export const CSV_TEMPLATE = `data,valor,categoria,conta,nota
-01/07/2026,100.50,Groceries,Nubank,Compras mensais
-2026-07-15,-50.00,Transport,,Uber`
+export const CSV_TEMPLATE = `data,hora,valor,categoria,conta,nota
+01/07/2026,,100.50,Groceries,Nubank,Compras mensais
+2026-07-15,18:42,-50.00,Transport,,Uber`

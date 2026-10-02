@@ -120,6 +120,8 @@ type DisplayRow =
 
 const PAGE_SIZE = 20;
 
+const timeOf = (row: DisplayRow) => (row.kind === "transaction" && row.tx.time) || "";
+
 const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", {
     style: "currency",
@@ -375,6 +377,7 @@ function Transactions() {
                     ...transaction,
                     amount: data.amount,
                     date: data.date,
+                    time: data.time ?? null,
                     accountId: data.account_id,
                     counterAccountId: data.counter_account_id,
                     note: transferNote(data.note),
@@ -490,7 +493,7 @@ function Transactions() {
           removeRule.mutate(rule.id);
       },
     })),
-  ].sort((a, b) => b.date.localeCompare(a.date));
+  ].sort((a, b) => b.date.localeCompare(a.date) || timeOf(b).localeCompare(timeOf(a)));
   const pageRows = rows.slice(0, visible);
   const hasMore = rows.length > visible;
 
@@ -787,6 +790,7 @@ function Transactions() {
                       <div className="font-medium">{dayLabel(row.date)}</div>
                       <div className="text-xs capitalize text-muted-foreground">
                         {weekdayLabel(row.date)}
+                        {row.kind === "transaction" && row.tx.time && ` · ${row.tx.time.slice(0, 5)}`}
                       </div>
                     </TableCell>
                     <TableCell className="max-w-[16rem] whitespace-normal align-top">

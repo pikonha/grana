@@ -32,6 +32,7 @@ type AccountOption = {
 type EditableTransfer = {
   amount: number;
   date: string;
+  time?: string | null;
   accountId: string | null;
   counterAccountId: string | null;
   note: string | null;
@@ -58,6 +59,7 @@ export function TransferModal({
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(localDateKey);
+  const [time, setTime] = useState("");
   const [note, setNote] = useState(DEFAULT_TRANSFER_NOTE);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -69,6 +71,8 @@ export function TransferModal({
     setTo(source?.counterAccountId ?? "");
     setAmount(source ? (source.amount / 100).toFixed(2) : "");
     setDate(source?.date ?? localDateKey());
+    // Postgres `time` reads back as HH:MM:SS.
+    setTime(source?.time?.slice(0, 5) ?? "");
     setNote(source?.note ?? DEFAULT_TRANSFER_NOTE);
     setError("");
   };
@@ -123,6 +127,7 @@ export function TransferModal({
               await onTransfer({
                 amount: Math.round(dollars * 100),
                 date,
+                time: time || undefined,
                 account_id: from,
                 counter_account_id: to,
                 note,
@@ -222,6 +227,14 @@ export function TransferModal({
                 onChange={setDate}
                 required
                 calendarPlacement="top"
+              />
+            </Field>
+            <Field label="Hora (opcional)" htmlFor="transfer-time">
+              <Input
+                id="transfer-time"
+                type="time"
+                value={time}
+                onChange={(event) => setTime(event.target.value)}
               />
             </Field>
           </div>

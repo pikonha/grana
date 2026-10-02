@@ -41,6 +41,7 @@ type EditableTransaction = {
   type: "earn" | "expend";
   amount: number;
   date: string;
+  time?: string | null;
   tags: { id: string }[];
   accountId: string | null;
   note: string | null;
@@ -83,6 +84,7 @@ export function TransactionModal({
   );
   const [amount, setAmount] = useState<number | null>(null);
   const [date, setDate] = useState(today);
+  const [time, setTime] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [accountId, setAccountId] = useState("");
   const [note, setNote] = useState("");
@@ -103,6 +105,8 @@ export function TransactionModal({
     setTransactionType(source?.type ?? type);
     setAmount(source?.amount ?? null);
     setDate(source?.date ?? today());
+    // Postgres `time` reads back as HH:MM:SS.
+    setTime(source?.time?.slice(0, 5) ?? "");
     setTagIds(source?.tags.map((tag) => tag.id) ?? []);
     setAccountId(source?.accountId ?? "");
     setNote(source?.note ?? "");
@@ -188,6 +192,7 @@ export function TransactionModal({
                   type: transactionType,
                   amount,
                   date,
+                  time: time || undefined,
                   tag_ids: tagIds.length ? tagIds : undefined,
                   account_id: accountId,
                   note: note || undefined,
@@ -198,6 +203,8 @@ export function TransactionModal({
                   type,
                   amount,
                   date,
+                  // Parcelas and recurrences are day-only.
+                  time: repeat === "none" && time ? time : undefined,
                   tag_ids: tagIds.length ? tagIds : undefined,
                   account_id: accountId,
                   note: note || undefined,
@@ -272,6 +279,16 @@ export function TransactionModal({
                   onChange={setDate}
                   required
                   disabled={installment}
+                />
+              </Field>
+            )}
+            {!recurring && !installment && repeat === "none" && (
+              <Field label="Hora (opcional)" htmlFor="transaction-time">
+                <Input
+                  id="transaction-time"
+                  type="time"
+                  value={time}
+                  onChange={(event) => setTime(event.target.value)}
                 />
               </Field>
             )}
