@@ -103,6 +103,7 @@ export function optimisticAccount(
     dueDay?: number;
     prepaid?: boolean;
     walletAddress?: string | null;
+    pluggyAccountId?: string | null;
     syncKind?: NonNullable<Account["syncKind"]>;
     syncEnabled?: boolean;
     syncSince?: string;
@@ -121,9 +122,10 @@ export function optimisticAccount(
     dueDay: isCreditCard && !prepaid ? input.dueDay ?? null : null,
     prepaid,
     walletAddress: input.walletAddress ?? null,
-    syncKind: input.walletAddress ? input.syncKind ?? null : null,
-    syncEnabled: !!input.walletAddress && (input.syncEnabled ?? false),
-    syncSince: input.walletAddress ? input.syncSince ?? null : null,
+    pluggyAccountId: input.pluggyAccountId ?? null,
+    syncKind: input.pluggyAccountId ? "pluggy" : input.walletAddress ? input.syncKind ?? null : null,
+    syncEnabled: (!!input.walletAddress || !!input.pluggyAccountId) && (input.syncEnabled ?? false),
+    syncSince: input.walletAddress || input.pluggyAccountId ? input.syncSince ?? null : null,
     syncCursor: null,
     lastSyncedAt: null,
     lastSyncError: null,

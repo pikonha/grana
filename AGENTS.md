@@ -165,6 +165,9 @@ daily `YYYY-MM-DD` · weekly `YYYY-MM-DD` (Monday) · monthly `YYYY-MM` · yearl
 - `BETTER_AUTH_URL` — public base URL the app is served from (used for auth callbacks and MCP OAuth).
 - `HERMES_WEBHOOK_SECRET` — bearer secret for the transactions webhook.
 - `HERMES_USER_ID` — Better Auth user ID that owns writes made through the webhook.
+- `PLUGGY_CLIENT_ID`, `PLUGGY_CLIENT_SECRET` — Pluggy Dashboard application credentials (Open Finance sync via Meu Pluggy). Setup: `docs/open-finance.md`.
+- `PLUGGY_ITEM_IDS` — comma-separated Meu Pluggy Item IDs (one per bank).
+- `PLUGGY_WEBHOOK_SECRET` — value of the `x-webhook-secret` header Pluggy sends to `POST /api/pluggy/webhook`. Any of the four missing → Pluggy sync is off (webhook 503, form hides the section).
 - `BLOCKSCOUT_API_KEY` — Blockscout PRO API key (free at dev.blockscout.com) for crypto account sync. Without it sync falls back to the keyless public explorers (~10 req/window, dev only).
 
 ## Commands
@@ -174,6 +177,9 @@ daily `YYYY-MM-DD` · weekly `YYYY-MM-DD` (Monday) · monthly `YYYY-MM` · yearl
 
 ## Crypto sync
 Accounts with `wallet_address` set are crypto accounts (`sync_kind` `wallet` = Base Safe, `etherfi_cash` = ether.fi card on OP). Pure mapping/matching in `src/lib/chain-sync.ts` (tested); fetch + writes in `src/server/chain-sync.core.ts`. `listAccounts` awaits `syncDueAccounts`, which claims due accounts (throttled 30 min/account via an atomic claim on `last_synced_at`) and runs the fetch in the background; accounts mid-run return `syncing: true` (in-process Set) so the Contas page spins and polls; the "Sincronizar" button calls `syncAccountNow`. Synced rows carry `external_id` (`<chainid>:<txhash>:<logIndex>`, `UNIQUE(user_id, external_id)`) and `usd_amount`; `amount` is BRL cents at the tx date's PTAX. Data source is Blockscout, not Etherscan: Etherscan V2's free tier refuses Base and OP. Transfers come from the REST `token-transfers` endpoint (address-indexed); `getLogs` by topic on USDC takes about 40 s. How it works: `docs/crypto-sync.md`. Design: `docs/superpowers/specs/2026-09-24-crypto-sync-design.md`.
+
+## Open Finance sync (Pluggy)
+Accounts with `sync_kind = 'pluggy'` + `pluggy_account_id` reconcile against Meu Pluggy: it claims hermes/manual rows (same account, direction, exact amount, ±2 days) and inserts what was missed, `external_id = pluggy:<id>`. Pure mapping in `src/lib/pluggy-sync.ts` (tested); fetch + writes in `src/server/pluggy-sync.core.ts`, dispatched from `runSync` in `chain-sync.core.ts` (same 30-min claim, `syncing` Set and button). Triggers: `POST /api/pluggy/webhook` (`src/server/pluggy-webhook.ts`, custom-header auth), page open, "Sincronizar". Data is at most ~1 day fresh (Meu Pluggy refresh). How it works: `docs/open-finance.md`. Design: `docs/superpowers/specs/2026-10-02-open-finance-pluggy-design.md`.
 
 ## Deploy (Railway)
 Web service + Postgres. Migrations run automatically: the `api` service's pre-deploy command is `pnpm drizzle-kit migrate`, tracked in `drizzle.__drizzle_migrations`. No manual step on merge. No cron service: `listTransactions` calls `materializeDueRules` on every read (idempotent, catches up missed days).

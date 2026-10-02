@@ -202,7 +202,8 @@ export async function setTransactionPaidCore(userId: string, input: TransactionP
   return { updated: rows.length }
 }
 
-export async function createInstallmentPlanCore(userId: string, input: TransactionInput & { installments: { count: number } }) {
+/** `run` lets a caller (Pluggy sync) fold the plan into its own transaction. */
+export async function createInstallmentPlanCore(userId: string, input: TransactionInput & { installments: { count: number } }, run: Pick<typeof db, 'transaction'> = db) {
   assertMoney(input.amount)
   const tagIds = inputTagIds(input)
   await assertOwnedTags(userId, tagIds)
@@ -214,7 +215,7 @@ export async function createInstallmentPlanCore(userId: string, input: Transacti
   // Prepaid cards have no fatura cycle, so their parcelas would be untracked debt.
   if (ownedAccount.prepaid) throw new Error('Installments are not available on prepaid cards')
   const amounts = splitInstallments(input.amount, input.installments.count)
-  return db.transaction(async (tx) => {
+  return run.transaction(async (tx) => {
     const [plan] = await tx.insert(installmentPlan).values({
       userId, accountId: input.account_id, totalAmount: input.amount,
       count: input.installments.count, startDate: input.date, note: input.note ?? null,

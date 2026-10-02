@@ -6,6 +6,7 @@ import {
   createAccount,
   deleteAccount,
   listAccounts,
+  listPluggyAccounts,
   syncAccountNow,
   updateAccount,
 } from "#/server/accounts";
@@ -43,14 +44,22 @@ const kindLabel = (k: string) =>
   k === "credit_card" ? "cartão de crédito" : "conta bancária";
 type CryptoForm = {
   enabled: boolean;
+  provider: "crypto" | "pluggy";
+  pluggyAccountId: string;
   walletAddress: string;
-  syncKind: NonNullable<Account["syncKind"]>;
+  syncKind: "wallet" | "etherfi_cash";
   syncSince: string;
   syncEnabled: boolean;
 };
 type CryptoInput =
-  | { walletAddress: null }
-  | Omit<CryptoForm, "enabled">;
+  | { walletAddress: null; pluggyAccountId: null }
+  | {
+      walletAddress: string;
+      syncKind: CryptoForm["syncKind"];
+      syncSince: string;
+      syncEnabled: boolean;
+    }
+  | { pluggyAccountId: string; syncSince: string; syncEnabled: boolean };
 type AccountFormInput = {
   name: string;
   kind: "credit_card" | "bank_account";
@@ -61,25 +70,31 @@ type AccountFormInput = {
 } & CryptoInput;
 const emptyCrypto = (): CryptoForm => ({
   enabled: false,
+  provider: "crypto",
+  pluggyAccountId: "",
   walletAddress: "",
   syncKind: "wallet",
   syncSince: appToday(),
   syncEnabled: true,
 });
 const cryptoFromAccount = (a: Account): CryptoForm =>
-  a.walletAddress
+  a.walletAddress || a.pluggyAccountId
     ? {
         enabled: true,
-        walletAddress: a.walletAddress,
-        syncKind: a.syncKind ?? "wallet",
+        provider: a.pluggyAccountId ? "pluggy" : "crypto",
+        pluggyAccountId: a.pluggyAccountId ?? "",
+        walletAddress: a.walletAddress ?? "",
+        syncKind: a.syncKind && a.syncKind !== "pluggy" ? a.syncKind : "wallet",
         syncSince: a.syncSince ?? appToday(),
         syncEnabled: a.syncEnabled,
       }
     : emptyCrypto();
-const cryptoInput = ({ enabled, ...rest }: CryptoForm): CryptoInput =>
-  enabled
-    ? { ...rest, walletAddress: rest.walletAddress.trim() }
-    : { walletAddress: null };
+const cryptoInput = (f: CryptoForm): CryptoInput =>
+  !f.enabled
+    ? { walletAddress: null, pluggyAccountId: null }
+    : f.provider === "pluggy"
+      ? { pluggyAccountId: f.pluggyAccountId, syncSince: f.syncSince, syncEnabled: f.syncEnabled }
+      : { walletAddress: f.walletAddress.trim(), syncKind: f.syncKind, syncSince: f.syncSince, syncEnabled: f.syncEnabled };
 const syncedAgo = (at: Date | string | null) => {
   if (!at) return "nunca sincronizado";
   const minutes = Math.round((new Date(at).getTime() - Date.now()) / 60_000);
@@ -89,19 +104,22 @@ const syncedAgo = (at: Date | string | null) => {
     return `sincronizado ${rtf.format(Math.round(minutes / 60), "hour")}`;
   return `sincronizado ${rtf.format(Math.round(minutes / 1440), "day")}`;
 };
+type PluggyOptions = { enabled: boolean; accounts: { id: string; name: string; type: string; number: string | null }[] };
 function CryptoFields({
   id,
   value,
   onChange,
+  pluggy,
 }: {
   id: string;
   value: CryptoForm;
   onChange: (value: CryptoForm) => void;
+  pluggy?: PluggyOptions;
 }) {
   const set = (patch: Partial<CryptoForm>) => onChange({ ...value, ...patch });
   return (
     <fieldset className="grid gap-4 border-t-2 border-foreground pt-3 sm:col-span-3 sm:grid-cols-3">
-      <legend className="sr-only">Sincronização cripto</legend>
+      <legend className="sr-only">Sincronização automática</legend>
       <Label
         htmlFor={`${id}-crypto`}
         className="flex min-h-10 cursor-pointer items-center gap-3 uppercase sm:col-span-3"
@@ -111,9 +129,82 @@ function CryptoFields({
           checked={value.enabled}
           onChange={(e) => set({ enabled: e.target.checked })}
         />
-        Sincronização cripto
+        Sincronização automática
       </Label>
-      {value.enabled && (
+      {value.enabled && pluggy?.enabled && (
+        <div className="space-y-2 sm:col-span-3">
+          <Label htmlFor={`${id}-provider`}>Fonte</Label>
+          <Select
+            value={value.provider}
+            onValueChange={(provider) => set({ provider: provider as CryptoForm["provider"] })}
+          >
+            <SelectTrigger id={`${id}-provider`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="crypto">Cripto (carteira)</SelectItem>
+              <SelectItem value="pluggy">Open Finance (Pluggy)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {value.enabled && value.provider === "pluggy" && (
+        <>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor={`${id}-pluggy`}>Conta no Open Finance</Label>
+            <Select
+              value={value.pluggyAccountId}
+              onValueChange={(pluggyAccountId) => set({ pluggyAccountId })}
+            >
+              <SelectTrigger id={`${id}-pluggy`}>
+                <SelectValue placeholder="Escolha a conta" />
+              </SelectTrigger>
+              <SelectContent>
+                {pluggy?.accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                    {a.number ? ` · ${a.number}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* Select has no native validation: block submit until an account is chosen. */}
+            <input
+              tabIndex={-1}
+              aria-hidden
+              className="sr-only"
+              value={value.pluggyAccountId}
+              onChange={() => {}}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${id}-pluggy-since`}>Importar desde</Label>
+            <Input
+              id={`${id}-pluggy-since`}
+              type="date"
+              value={value.syncSince}
+              max={appToday()}
+              onChange={(e) => set({ syncSince: e.target.value })}
+              required
+            />
+          </div>
+          <div className="flex items-end sm:col-span-3">
+            <Label
+              htmlFor={`${id}-pluggy-auto`}
+              className="flex min-h-10 cursor-pointer items-center gap-3 uppercase"
+            >
+              <Checkbox
+                id={`${id}-pluggy-auto`}
+                checked={value.syncEnabled}
+                onChange={(e) => set({ syncEnabled: e.target.checked })}
+              />
+              Sincronizar automaticamente
+            </Label>
+          </div>
+        </>
+      )}
+      {value.enabled && value.provider === "crypto" && (
         <>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor={`${id}-address`}>Endereço da carteira</Label>
@@ -201,6 +292,11 @@ function Accounts() {
     // Background sync (claimed on load): poll until it finishes so the spinner stops on time.
     refetchInterval: (query) =>
       query.state.data?.some((a) => a.syncing) ? 2_000 : false,
+  });
+  const { data: pluggy } = useQuery({
+    queryKey: ["pluggy-accounts"],
+    queryFn: () => listPluggyAccounts(),
+    staleTime: 5 * 60_000,
   });
   const { data: faturas = [] } = useQuery({
     queryKey: ["faturas"],
@@ -467,7 +563,7 @@ function Accounts() {
                 />
               </div>
             )}
-            <CryptoFields id="new" value={crypto} onChange={setCrypto} />
+            <CryptoFields id="new" value={crypto} onChange={setCrypto} pluggy={pluggy} />
             <Button className="w-full sm:col-span-3 sm:w-fit">
               Adicionar conta
             </Button>
@@ -509,9 +605,12 @@ function Accounts() {
                     {money(a.limit)}
                   </span>
                 )}
-                {a.walletAddress && (
+                {(a.walletAddress || a.pluggyAccountId) && (
                   <span className="text-sm text-muted-foreground">
-                    {a.walletAddress.slice(0, 6)}…{a.walletAddress.slice(-4)} ·{" "}
+                    {a.walletAddress
+                      ? `${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}`
+                      : "Open Finance"}{" "}
+                    ·{" "}
                     {a.syncing
                       ? "sincronizando…"
                       : a.lastSyncError
@@ -540,7 +639,7 @@ function Accounts() {
                 >
                   Excluir
                 </Button>
-                {a.walletAddress && (
+                {(a.walletAddress || a.pluggyAccountId) && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -553,7 +652,7 @@ function Accounts() {
                     Sincronizar
                   </Button>
                 )}
-                {a.walletAddress && a.lastSyncError && (
+                {(a.walletAddress || a.pluggyAccountId) && a.lastSyncError && (
                   <p role="alert" className="w-full text-sm text-destructive">
                     Erro na sincronização: {a.lastSyncError}
                   </p>
