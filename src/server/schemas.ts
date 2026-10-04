@@ -63,6 +63,7 @@ export type UpdateTransferInput = z.infer<typeof updateTransferInput>
 
 export const faturaPaymentInput = z.object({ account_id: z.string().uuid(), cycle_key: isoDate, paid_at: isoDate.optional() })
 export type FaturaPaymentInput = z.infer<typeof faturaPaymentInput>
+export const idInput = z.object({ id: z.string().uuid() })
 export const transactionPaidInput = z.object({ id: z.string().uuid(), paid: z.boolean() })
 
 export const categoryInput = z.object({

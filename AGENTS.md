@@ -151,7 +151,7 @@ TanStack Start (React 19, file-based routing) · TanStack Query/Table/Form · Dr
 
 ## Endpoints
 - `POST /api/transactions` — hermes webhook + external writes. Bearer `HERMES_WEBHOOK_SECRET`, constant-time compare, checked **before** body parse (401). Zod-validated with `.strict()` (400, rejects unknown keys like `card_id`), `assertMoney`, returns `{id}` (201). **The UI does NOT call this route** — it uses same-origin server functions, so the secret never reaches the browser (deviation from plan, made for security). Shared insert logic lives in `createTransactionCore`.
-- `GET/POST /api/mcp` — Model Context Protocol server (streamable HTTP), OAuth-protected via Better Auth's `mcp` plugin. 15 tools, scoped per-user, no deletes. See README's MCP section for the tool list.
+- `GET/POST /api/mcp` — Model Context Protocol server (streamable HTTP), OAuth-protected via Better Auth's `mcp` plugin. 17 tools, scoped per-user; deletes only for transactions and installment plans. See README's MCP section for the tool list.
 
 ## Installments
 `createInstallmentPlan` generates N real `transaction` rows up front on a monthly schedule; last row absorbs the rounding remainder so `SUM(rows) === total` (asserted). Rows are **delete-only** (no edit) to preserve the invariant — to change a plan, delete and recreate.

@@ -2,20 +2,20 @@ import { createFileRoute } from '@tanstack/react-router'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { withMcpAuth } from 'better-auth/plugins'
-import { asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { auth } from '#/server/auth-config'
 import { db } from '#/db/index'
 import { account, installmentPlan, recurrenceRule, tag, transaction } from '#/db/schema'
 import { appToday } from '#/lib/dates'
 import { tagColorForIndex } from '#/lib/tag-colors'
-import { accountInput, categoryInput, createTransactionInput, faturaPaymentInput, transferInput, updateAccountInput, updateRecurrenceRuleInput, updateTransactionInput } from '#/server/schemas'
+import { accountInput, categoryInput, createTransactionInput, faturaPaymentInput, idInput, transferInput, updateAccountInput, updateRecurrenceRuleInput, updateTransactionInput } from '#/server/schemas'
 import { createAccountCore, updateAccountCore } from '#/server/accounts.core'
 import { tagsByRule, tagsByTransaction } from '#/server/tags.core'
 import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateRecurrenceRuleCore, updateTransactionCore } from '#/server/transactions.core'
 import { listFaturasCore, markFaturaPaidCore, unmarkFaturaPaidCore } from '#/server/faturas.core'
 
 /**
- * Multi-tenant MCP server: same-origin, no delete tools. Every tool resolves
+ * Multi-tenant MCP server: same-origin. Every tool resolves
  * `userId` from the OAuth access token session (via withMcpAuth), mirroring
  * the scoping requireUser() does for the UI's server functions.
  */
@@ -72,6 +72,11 @@ function buildServer(userId: string) {
     return text(await updateTransactionCore(userId, data))
   })
 
+  server.registerTool('delete_transaction', { description: 'Delete one transaction. Deleting a single installment row leaves the rest of its plan; use delete_installment_plan to remove a whole purchase', inputSchema: idInput }, async ({ id }) => {
+    const rows = await db.delete(transaction).where(and(eq(transaction.id, id), eq(transaction.userId, userId))).returning({ id: transaction.id })
+    return text({ deleted: rows.length })
+  })
+
   server.registerTool('create_transfer', { description: 'Create a transfer between two of the user\'s own accounts', inputSchema: transferInput }, async (data) => {
     return text(await createTransferCore(userId, data))
   })
@@ -79,6 +84,11 @@ function buildServer(userId: string) {
   server.registerTool('list_installment_plans', { description: 'List the installment plans owned by the authenticated user' }, async () => {
     const rows = await db.select().from(installmentPlan).where(eq(installmentPlan.userId, userId)).orderBy(asc(installmentPlan.startDate))
     return text(rows)
+  })
+
+  server.registerTool('delete_installment_plan', { description: 'Delete an installment plan and all of its installment rows', inputSchema: idInput }, async ({ id }) => {
+    const rows = await db.delete(installmentPlan).where(and(eq(installmentPlan.id, id), eq(installmentPlan.userId, userId))).returning({ id: installmentPlan.id })
+    return text({ deleted: rows.length })
   })
 
   server.registerTool('list_recurrence_rules', { description: 'List the recurrence rules owned by the authenticated user, each with its tags' }, async () => {
