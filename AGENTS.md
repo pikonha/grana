@@ -145,6 +145,7 @@ TanStack Start (React 19, file-based routing) · TanStack Query/Table/Form · Dr
 ## Money & correctness rules
 - **Integer cents everywhere.** `src/lib/money.ts#assertMoney` is called at every trust-boundary write (webhook + every create handler). UI collects dollars and converts with `Math.round(dollars*100)`.
 - **Balance = `SUM` of rows** signed by type (`earn` +, `expend` −). No query-time derivation. See `balanceOf`.
+- **Opening balances** = `earn` tagged `saldo inicial` (`isOpeningBalance`): count in the balance, excluded from month income/result (dashboard + reports).
 
 ## Data model (`src/db/schema.ts`)
 `account, tag (aka category), recurrence_rule, installment_plan, transaction, transaction_tag, recurrence_rule_tag, fatura_payment`, plus Better Auth's own tables. Every owned row carries a real `user_id` scoped to the authenticated Better Auth user (multi-user, enforced via `requireUser()`/session in every server fn, tool, and route) — there is no `default-user` constant. `transaction.installment_plan_id` → `onDelete: 'cascade'`. `UNIQUE(recurrence_rule_id, period_key)` for cron idempotency.

@@ -16,7 +16,7 @@ import type { Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
 import type { FaturaRow } from "#/server/faturas.core";
 import { addMonths } from "#/lib/installments";
-import { formatCentsBRL } from "#/lib/money";
+import { formatCentsBRL, isOpeningBalance, savingsRate } from "#/lib/money";
 import { localMonthKey } from "#/lib/recurrence";
 import { MonthNav } from "@/components/MonthNav";
 import {
@@ -87,7 +87,9 @@ export function ReportCharts({
     () =>
       transactions.filter(
         (t): t is TransactionRow & { type: "earn" | "expend" } =>
-          t.type !== "transfer" && t.date.slice(0, 7) === activeMonth
+          t.type !== "transfer" &&
+          t.date.slice(0, 7) === activeMonth &&
+          !isOpeningBalance(t)
       ),
     [transactions, activeMonth]
   );
@@ -99,7 +101,7 @@ export function ReportCharts({
       if (t.type === "earn") earn += t.amount;
       else expend += t.amount;
     }
-    return { earn, expend, net: earn - expend };
+    return { earn, expend, net: earn - expend, rate: savingsRate(earn, expend) };
   }, [periodTransactions]);
 
   const categoryById = useMemo(
@@ -194,6 +196,11 @@ export function ReportCharts({
           label="Resultado"
           value={displayMoney(totals.net)}
           negative={totals.net < 0}
+          hint={
+            totals.rate === null
+              ? "sem receita no período"
+              : `${totals.rate > 0 ? "+" : ""}${Math.round(totals.rate * 100)}% da receita`
+          }
         />
       </div>
 

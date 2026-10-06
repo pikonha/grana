@@ -94,10 +94,12 @@ export function StatTile({
   label,
   value,
   negative,
+  hint,
 }: {
   label: string;
   value: string;
   negative?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="border-2 border-foreground bg-card p-4 brutal-shadow">
@@ -111,6 +113,15 @@ export function StatTile({
       >
         {value}
       </p>
+      {hint && (
+        <p
+          className={`mt-1 text-sm font-bold ${
+            negative ? "text-destructive" : "text-muted-foreground"
+          }`}
+        >
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

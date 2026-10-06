@@ -18,7 +18,7 @@ import type {
 } from "#/server/schemas";
 import type { Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
-import { balanceOf, prepaidBalanceOf } from "#/lib/money";
+import { balanceOf, isOpeningBalance, prepaidBalanceOf, savingsRate } from "#/lib/money";
 import { appToday } from "#/lib/dates";
 import {
   financeQueryKeys,
@@ -84,10 +84,12 @@ function Dashboard() {
       transaction.type !== "transfer"
   );
   const paidStatsTransactions = statsTransactions.filter((tx) => tx.paid);
-  const monthKey = new Date().toISOString().slice(0, 7);
+  const monthKey = appToday().slice(0, 7);
   const monthTransactions = paidStatsTransactions.filter(
     (transaction) =>
-      transaction.date.startsWith(monthKey) && inAccount(transaction)
+      transaction.date.startsWith(monthKey) &&
+      inAccount(transaction) &&
+      !isOpeningBalance(transaction)
   );
   const balance = accountId
     ? prepaidBalanceOf(accountId, transactions)
@@ -98,6 +100,7 @@ function Dashboard() {
       .reduce((total, transaction) => total + transaction.amount, 0);
   const monthEarn = sumByType("earn");
   const monthExpend = sumByType("expend");
+  const monthRate = savingsRate(monthEarn, monthExpend);
   const currentFaturasTotal = faturas
     .filter(
       (fatura) =>
@@ -328,6 +331,11 @@ function Dashboard() {
           label="Resultado do mês"
           value={displayMoney(monthEarn - monthExpend)}
           negative={monthEarn - monthExpend < 0}
+          hint={
+            monthRate === null
+              ? "sem receita no mês"
+              : `${monthRate > 0 ? "+" : ""}${Math.round(monthRate * 100)}% da receita`
+          }
         />
         <StatTile
           label="Fatura atual"

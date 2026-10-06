@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balanceOf, isPaymentTrackable, paidByDate, signedAmount } from './money'
+import { balanceOf, isOpeningBalance, isPaymentTrackable, paidByDate, savingsRate, signedAmount } from './money'
 
 describe('balanceOf', () => {
   it('sums paid transactions only when filtered', () => {
@@ -65,5 +65,17 @@ describe('signedAmount', () => {
 
   it('returns negative for expend', () => {
     expect(signedAmount('expend', 1000)).toBe(-1000)
+  })
+})
+
+describe('opening balance + savings rate', () => {
+  it('detects the opening-balance tag case-insensitively', () => {
+    expect(isOpeningBalance({ tags: [{ name: ' Saldo Inicial ' }] })).toBe(true)
+    expect(isOpeningBalance({ tags: [{ name: 'salário' }] })).toBe(false)
+  })
+  it('computes savings rate, null without income', () => {
+    expect(savingsRate(10000, 7500)).toBe(0.25)
+    expect(savingsRate(10000, 12000)).toBe(-0.2)
+    expect(savingsRate(0, 500)).toBeNull()
   })
 })

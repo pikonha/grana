@@ -30,6 +30,18 @@ export function formatCentsBRL(cents: number): string {
   })
 }
 
+/** Tag that marks an earn as an opening balance: it counts toward the balance, never toward income. */
+export const OPENING_BALANCE_TAG = 'saldo inicial'
+
+export function isOpeningBalance(tx: { tags: Array<{ name: string }> }): boolean {
+  return tx.tags.some((t) => t.name.trim().toLowerCase() === OPENING_BALANCE_TAG)
+}
+
+/** Share of income kept in the period: (earn − expend) / earn. Null without income. */
+export function savingsRate(earn: number, expend: number): number | null {
+  return earn > 0 ? (earn - expend) / earn : null
+}
+
 /** Signed balance contribution: earn adds, expend subtracts. */
 export function signedAmount(type: 'earn' | 'expend', amount: number): number {
   return type === 'earn' ? amount : -amount
