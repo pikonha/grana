@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { accountInput, updateAccountInput } from './schemas'
 import { createAccountCore, deleteAccountCore, updateAccountCore } from './accounts.core'
 import { requireUser } from './session.core'
+import { listPluggyAccountsCore } from './pluggy-sync.core'
+import { pluggyEnabled } from './pluggy-config'
 import { isSyncing, syncAccountNowCore, syncDueAccounts } from './chain-sync.core'
 
 export const listAccounts = createServerFn({ method: 'GET' }).handler(async () => {
@@ -31,3 +33,10 @@ export const deleteAccount = createServerFn({ method: 'POST' })
 export const syncAccountNow = createServerFn({ method: 'POST' })
   .validator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data).id)
   .handler(async ({ data: id }) => syncAccountNowCore(await requireUser(), id))
+
+/** Pluggy accounts for the account form's select; `enabled: false` hides the Open Finance section. */
+export const listPluggyAccounts = createServerFn({ method: 'GET' }).handler(async () => {
+  await requireUser()
+  if (!pluggyEnabled()) return { enabled: false, accounts: [] }
+  return { enabled: true, accounts: await listPluggyAccountsCore() }
+})

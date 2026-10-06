@@ -50,3 +50,11 @@ describe('accountInput crypto sync',()=>{
   it('accepts null to clear the address',()=>expect(accountInput.parse({name:'Safe',kind:'bank_account',walletAddress:null}).walletAddress).toBeNull())
   it('keeps the refinements on update',()=>expect(updateAccountInput.safeParse({...safe,id:'11111111-1111-4111-8111-111111111111',syncKind:undefined}).success).toBe(false))
 })
+
+describe('accountInput Open Finance sync',()=>{
+  const nu={name:'nu',kind:'bank_account' as const,pluggyAccountId:'7f1c0e5a-0000-4000-8000-000000000000',syncSince:'2026-09-01'}
+  it('accepts a Pluggy account with a start date',()=>expect(accountInput.safeParse(nu).success).toBe(true))
+  it('requires the start date',()=>expect(accountInput.safeParse({...nu,syncSince:undefined}).success).toBe(false))
+  it('is exclusive with a wallet address',()=>expect(accountInput.safeParse({...nu,walletAddress:'0xabcdefabcdef0123456789012345678901234567',syncKind:'wallet'}).success).toBe(false))
+  it('accepts null to clear it',()=>expect(accountInput.parse({name:'nu',kind:'bank_account',pluggyAccountId:null}).pluggyAccountId).toBeNull())
+})

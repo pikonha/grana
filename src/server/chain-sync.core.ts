@@ -3,6 +3,9 @@ import { db } from '#/db/index'
 import { account, transaction, type Account } from '#/db/schema'
 import { CHAINS, dateOf, externalIdOf, parseSpendLog, parseTransferItem, planSync, STABLECOINS, type LogMeta, type RawLog, type SpendLog, type SyncKind, type SyncPlan, type TokenTransfer, type TransferItem } from '#/lib/chain-sync'
 import { addDays } from '#/lib/dates'
+import { listPluggyAccountsCore, RECONNECT_ERROR, syncPluggyAccount } from './pluggy-sync.core'
+import { pluggyEnabled } from './pluggy-config'
+import type { PluggyWebhookEvent } from './pluggy-webhook'
 
 /**
  * Crypto account sync: explorer + PTAX fetch and db writes. Server-only — import it
@@ -128,7 +131,7 @@ async function fetchPtax(from: string, to: string): Promise<Record<string, numbe
 }
 
 async function syncAccount(acc: Account, linked: Account[]) {
-  if (!acc.walletAddress || !acc.syncKind || !acc.syncSince) throw new Error('Account is not configured for crypto sync')
+  if (!acc.walletAddress || !acc.syncKind || acc.syncKind === 'pluggy' || !acc.syncSince) throw new Error('Account is not configured for crypto sync')
   const { walletAddress, syncKind, syncSince } = acc
   const cursor = { ...acc.syncCursor }
   const transfers: TokenTransfer[] = [], spends: SpendLog[] = []
@@ -175,7 +178,7 @@ async function syncAccount(acc: Account, linked: Account[]) {
     ))
     plan = planSync({
       account: { id: acc.id, walletAddress, syncKind, syncSince },
-      siblings: linked.filter((a) => a.id !== acc.id && a.syncKind).map((a) => ({ id: a.id, walletAddress: a.walletAddress!, syncKind: a.syncKind! })),
+      siblings: linked.flatMap((a) => a.id !== acc.id && a.walletAddress && a.syncKind && a.syncKind !== 'pluggy' ? [{ id: a.id, walletAddress: a.walletAddress, syncKind: a.syncKind }] : []),
       transfers: newTransfers, spends: newSpends, rates, transfersIn, existing,
     })
   }
@@ -214,11 +217,11 @@ async function runSync(targets: Account[], linked: Account[]) {
     for (const acc of queue) {
       try {
         if (acc.syncKind === 'etherfi_cash' && walletFailed) throw new Error('Carteira vinculada falhou nesta sincronização; tentando de novo depois')
-        await syncAccount(acc, linked)
+        await (acc.syncKind === 'pluggy' ? syncPluggyAccount(acc, linked) : syncAccount(acc, linked))
       } catch (error) {
         if (acc.syncKind === 'wallet') walletFailed = true
         const message = error instanceof Error ? error.message : String(error)
-        console.error(`[chain-sync] account ${acc.id}:`, message)
+        console.error(`[sync] account ${acc.id}:`, message)
         await db.update(account).set({ lastSyncError: message.slice(0, 500) }).where(eq(account.id, acc.id))
       }
     }
@@ -231,8 +234,9 @@ async function runSync(targets: Account[], linked: Account[]) {
 const syncing = new Set<string>()
 export const isSyncing = (accountId: string) => syncing.has(accountId)
 
-const cryptoAccounts = (userId: string) => db.select().from(account)
-  .where(and(eq(account.userId, userId), isNotNull(account.walletAddress)))
+/** Crypto and Open Finance accounts: everything with a sync config. */
+const syncableAccounts = (userId: string) => db.select().from(account)
+  .where(and(eq(account.userId, userId), or(isNotNull(account.walletAddress), isNotNull(account.pluggyAccountId))))
 
 /**
  * Lazy sync on read, throttled per account. Resolves once due accounts are claimed and
@@ -240,7 +244,7 @@ const cryptoAccounts = (userId: string) => db.select().from(account)
  */
 export async function syncDueAccounts(userId: string) {
   try {
-    const linked = await cryptoAccounts(userId)
+    const linked = await syncableAccounts(userId)
     const due: Account[] = []
     for (const acc of linked.filter((a) => a.syncEnabled)) {
       // Claim the slot atomically: throttles retries after failures and keeps concurrent reads from double-fetching.
@@ -257,10 +261,36 @@ export async function syncDueAccounts(userId: string) {
 
 /** The "Sincronizar" button: this account now (even with auto-sync off). */
 export async function syncAccountNowCore(userId: string, accountId: string) {
-  const linked = await cryptoAccounts(userId)
+  const linked = await syncableAccounts(userId)
   const target = linked.find((a) => a.id === accountId)
-  if (!target) throw new Error('Crypto account not found')
+  if (!target) throw new Error('Synced account not found')
   await runSync([target], linked)
   const [row] = await db.select({ lastSyncError: account.lastSyncError }).from(account).where(eq(account.id, accountId))
   return { error: row?.lastSyncError ?? null }
+}
+
+/**
+ * Pluggy webhook: a trigger only. Syncs the enabled accounts of the item right away (the
+ * 30-min throttle is bypassed, a run already in progress is not); `item/error` records the
+ * reconnect hint instead. Never throws.
+ */
+export async function syncPluggyItemEvent({ event, itemId }: PluggyWebhookEvent) {
+  try {
+    if (!pluggyEnabled()) return
+    const ids = (await listPluggyAccountsCore()).filter((a) => a.itemId === itemId).map((a) => a.id)
+    if (!ids.length) return
+    const rows = await db.select().from(account).where(and(eq(account.syncKind, 'pluggy'), inArray(account.pluggyAccountId, ids)))
+    const targets = rows.filter((a) => a.syncEnabled && !syncing.has(a.id))
+    if (event === 'item/error') {
+      if (targets.length) await db.update(account).set({ lastSyncError: RECONNECT_ERROR }).where(inArray(account.id, targets.map((a) => a.id)))
+      return
+    }
+    for (const userId of new Set(targets.map((a) => a.userId))) {
+      // ponytail: re-reads the user's accounts per event; fine at one user.
+      const linked = await syncableAccounts(userId)
+      await runSync(targets.filter((a) => a.userId === userId), linked)
+    }
+  } catch (error) {
+    console.error('[pluggy] syncPluggyItemEvent:', error)
+  }
 }

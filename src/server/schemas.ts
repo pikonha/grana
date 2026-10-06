@@ -89,12 +89,18 @@ export const accountInput = z.object({
   // Crypto sync. walletAddress: omitted = keep as is, null = no longer a crypto account.
   walletAddress: z.string().trim().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddress must be 0x + 40 hex chars').transform((a) => a.toLowerCase()).nullable().optional(),
   syncKind: z.enum(['wallet', 'etherfi_cash']).optional(),
+  // Open Finance sync (Pluggy account UUID). Same null/omitted semantics as walletAddress; the sync kind is implied.
+  pluggyAccountId: z.string().trim().min(1).max(100).nullable().optional(),
   syncEnabled: z.boolean().optional(),
   syncSince: isoDate.optional(),
 }).refine((data) => data.kind !== 'credit_card' || data.prepaid || (data.closingDay !== undefined && data.dueDay !== undefined), {
   message: 'closingDay and dueDay are required for limit-based credit cards',
 }).refine((data) => !data.walletAddress || (data.syncKind && data.syncSince), {
   message: 'syncKind and syncSince are required for crypto accounts',
+}).refine((data) => !data.pluggyAccountId || data.syncSince, {
+  message: 'syncSince is required for Open Finance accounts',
+}).refine((data) => !(data.walletAddress && data.pluggyAccountId), {
+  message: 'An account is either a crypto or an Open Finance account',
 })
 export type AccountInput = z.infer<typeof accountInput>
 

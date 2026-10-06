@@ -4,7 +4,7 @@ import { authUser } from './auth-schema'
 export const txTypeEnum = pgEnum('tx_type', ['earn', 'expend', 'transfer'])
 export const intervalEnum = pgEnum('rec_interval', ['daily', 'weekly', 'monthly', 'yearly'])
 export const accountKindEnum = pgEnum('account_kind', ['credit_card', 'bank_account'])
-export const syncKindEnum = pgEnum('sync_kind', ['wallet', 'etherfi_cash'])
+export const syncKindEnum = pgEnum('sync_kind', ['wallet', 'etherfi_cash', 'pluggy'])
 
 const owner = () => text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' })
 
@@ -19,6 +19,8 @@ export const account = pgTable('account', {
   closingDay: integer('closing_day'), dueDay: integer('due_day'), prepaid: boolean().notNull().default(false),
   // Crypto auto-sync: an account is crypto when wallet_address is set (lowercase 0x…).
   walletAddress: text('wallet_address'), syncKind: syncKindEnum('sync_kind'),
+  /** Open Finance (Pluggy): the Pluggy account UUID; set together with sync_kind = 'pluggy'. */
+  pluggyAccountId: text('pluggy_account_id'),
   syncEnabled: boolean('sync_enabled').notNull().default(false), syncSince: date('sync_since'),
   /** `{ "<chainid>": lastProcessedBlock }` */
   syncCursor: jsonb('sync_cursor').$type<Record<string, number>>(),
