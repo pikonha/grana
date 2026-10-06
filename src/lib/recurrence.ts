@@ -83,13 +83,14 @@ export function scheduledDatesInMonth(
   interval: Interval,
   nextRun: string,
   month: string,
+  endDate?: string | null,
 ): string[] {
   if (nextRun.slice(0, 7) > month) return []
 
   const dates: string[] = []
   let date = nextRun
   while (date.slice(0, 7) < month) date = advance(interval, date)
-  while (date.slice(0, 7) === month) {
+  while (date.slice(0, 7) === month && (!endDate || date <= endDate)) {
     dates.push(date)
     date = advance(interval, date)
   }

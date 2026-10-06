@@ -159,7 +159,7 @@ export function registerFinanceTools(server: McpServer, userId: string) {
   }, async ({ id }) => text(await deleteTransactionCore(userId, id)))
 
   server.registerTool('set_transaction_paid', {
-    description: 'Mark or unmark a payment-trackable transaction as paid',
+    description: 'Mark or unmark a payment-trackable transaction as paid; pass date (YYYY-MM-DD) to also move it to the day it was paid',
     inputSchema: transactionPaidInput,
   }, async (data) => text(await setTransactionPaidCore(userId, data)))
 

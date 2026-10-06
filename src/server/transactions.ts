@@ -2,8 +2,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { asc, desc, eq, sql } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { installmentPlan, recurrenceRule, transaction, type RecurrenceRule, type Tag, type Transaction } from '#/db/schema'
-import { createTransactionInput, importTransactionsInput, transactionPaidInput, transferInput, updateRecurrenceRuleInput, updateTransactionInput, updateTransferInput } from './schemas'
-import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, deleteInstallmentPlanCore, deleteRecurrenceRuleCore, deleteTransactionCore, importTransactionsCore, setTransactionPaidCore, updateRecurrenceRuleCore, updateTransactionCore, updateTransferCore } from './transactions.core'
+import { createTransactionInput, deleteRecurrenceInput, importTransactionsInput, transactionPaidInput, transferInput, updateRecurrenceRuleInput, updateTransactionInput, updateTransferInput } from './schemas'
+import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, deleteInstallmentPlanCore, deleteRecurrenceCore, deleteTransactionCore, importTransactionsCore, setTransactionPaidCore, updateRecurrenceRuleCore, updateTransactionCore, updateTransferCore } from './transactions.core'
 import { tagsByRule, tagsByTransaction } from './tags.core'
 import { requireUser } from './session.core'
 import { materializeDueRules } from './recurrence.core'
@@ -76,10 +76,9 @@ export const listRecurrenceRules = createServerFn({ method: 'GET' }).handler(asy
 export const updateRecurrenceRule = createServerFn({ method: 'POST' })
   .validator((data: unknown) => updateRecurrenceRuleInput.parse(data))
   .handler(async ({ data }) => updateRecurrenceRuleCore(await requireUser(), data))
-export const deleteRecurrenceRule = createServerFn({ method: 'POST' }).validator(idInput).handler(async ({ data: id }) => {
-  await deleteRecurrenceRuleCore(await requireUser(), id)
-  return { success: true }
-})
+export const deleteRecurrence = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => deleteRecurrenceInput.parse(data))
+  .handler(async ({ data }) => deleteRecurrenceCore(await requireUser(), data))
 
 export const importTransactions = createServerFn({ method: 'POST' })
   .validator((data: unknown) => importTransactionsInput.parse(data))

@@ -1,0 +1,1 @@
+ALTER TABLE "recurrence_rule" ADD COLUMN "end_date" date;

@@ -36,6 +36,8 @@ export const recurrenceRule = pgTable('recurrence_rule', {
   type: txTypeEnum().notNull(), interval: intervalEnum().notNull(), nextRun: date('next_run').notNull(),
   accountId: uuid('account_id').notNull().references(() => account.id, { onDelete: 'restrict' }),
   note: text(),
+  /** Last day an occurrence may fall on ("delete from this one onward"); null = open-ended. */
+  endDate: date('end_date'),
 })
 
 export const installmentPlan = pgTable('installment_plan', {

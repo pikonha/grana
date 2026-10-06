@@ -7,7 +7,7 @@ import { createCategory, deleteCategory, listCategories } from "#/server/categor
 import {
   createTransaction,
   createTransfer,
-  deleteRecurrenceRule,
+  deleteRecurrence,
   deleteTransaction,
   listInstallmentPlans,
   listRecurrenceRules,
@@ -50,6 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker, localDateKey } from "@/components/ui/date-picker";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -178,6 +179,10 @@ function Transactions() {
   const [note, setNote] = useState("");
   const [repeat, setRepeat] = useState<Repeat>("none");
   const [count, setCount] = useState("2");
+  // Recurring row awaiting "only this / from here on / all"; txId is set for materialized rows.
+  const [recurrenceDelete, setRecurrenceDelete] = useState<{ ruleId: string; date: string; txId?: string } | null>(null);
+  // Row being marked paid on a different day: keep its date or move it to today?
+  const [paidPrompt, setPaidPrompt] = useState<TransactionRow | null>(null);
   const [activeMonth, setActiveMonth] = useState(localMonthKey);
   const [showValues, setShowValues] = useState(true);
   const [filterAccount, setFilterAccount] = useState("");
@@ -318,7 +323,19 @@ function Transactions() {
   });
 
   const removeRule = useMutation({
-    mutationFn: (id: string) => deleteRecurrenceRule({ data: { id } }),
+    mutationFn: (data: { rule_id: string; from?: string }) => deleteRecurrence({ data }),
+    onMutate: async ({ rule_id, from }) => {
+      await qc.cancelQueries({ queryKey: financeQueryKeys.transactions });
+      const previous = qc.getQueryData<TransactionRow[]>(financeQueryKeys.transactions);
+      qc.setQueryData<TransactionRow[]>(
+        financeQueryKeys.transactions,
+        (current = []) =>
+          current.filter((tx) => tx.recurrenceRuleId !== rule_id || (from !== undefined && tx.date < from)),
+      );
+      return { previous };
+    },
+    onError: (_error, _data, context) =>
+      qc.setQueryData(financeQueryKeys.transactions, context?.previous),
     onSettled: refresh,
   });
 
@@ -328,13 +345,14 @@ function Transactions() {
   });
 
   const setPaid = useMutation({
-    mutationFn: (data: { id: string; paid: boolean }) => setTransactionPaid({ data }),
-    onMutate: async ({ id, paid }) => {
+    mutationFn: (data: { id: string; paid: boolean; date?: string }) => setTransactionPaid({ data }),
+    onMutate: async ({ id, paid, date }) => {
       await qc.cancelQueries({ queryKey: financeQueryKeys.transactions });
       const previous = qc.getQueryData<TransactionRow[]>(financeQueryKeys.transactions);
       qc.setQueryData<TransactionRow[]>(
         financeQueryKeys.transactions,
-        (current = []) => current.map((tx) => (tx.id === id ? { ...tx, paid } : tx)),
+        (current = []) =>
+          current.map((tx) => (tx.id === id ? { ...tx, paid, ...(date && { date, time: null }) } : tx)),
       );
       return { previous };
     },
@@ -408,7 +426,7 @@ function Transactions() {
       recurrenceRules
         .filter((rule) => !filterAccount || rule.accountId === filterAccount)
         .flatMap((rule) =>
-          scheduledDatesInMonth(rule.interval, rule.nextRun, activeMonth).map(
+          scheduledDatesInMonth(rule.interval, rule.nextRun, activeMonth, rule.endDate).map(
             (date) => ({ rule, date }),
           ),
         ),
@@ -469,7 +487,10 @@ function Transactions() {
       pending: tx.userId === "optimistic",
       paid: tx.paid,
       tx,
-      onDelete: () => removeTx.mutate(tx.id),
+      onDelete: () =>
+        tx.recurrenceRuleId
+          ? setRecurrenceDelete({ ruleId: tx.recurrenceRuleId, date: tx.date, txId: tx.id })
+          : removeTx.mutate(tx.id),
     })),
     ...scheduled.map(({ rule, date }): DisplayRow => ({
       kind: "scheduled",
@@ -486,14 +507,7 @@ function Transactions() {
       isRecurring: true,
       pending: removeRule.isPending,
       rule,
-      onDelete: () => {
-        if (
-          window.confirm(
-            "Excluir esta recorrência? Isso apaga todo o histórico gerado por ela.",
-          )
-        )
-          removeRule.mutate(rule.id);
-      },
+      onDelete: () => setRecurrenceDelete({ ruleId: rule.id, date }),
     })),
   ].sort((a, b) => b.date.localeCompare(a.date) || timeOf(b).localeCompare(timeOf(a)));
   const pageRows = rows.slice(0, visible);
@@ -884,7 +898,11 @@ function Transactions() {
                               title={row.paid ? "Marcar como não pago" : "Marcar como pago"}
                               className={`size-8 ${row.paid ? "" : "text-muted-foreground"}`}
                               disabled={row.pending}
-                              onClick={() => setPaid.mutate({ id: row.tx.id, paid: !row.paid })}
+                              onClick={() =>
+                                !row.paid && row.tx.date !== localDateKey()
+                                  ? setPaidPrompt(row.tx)
+                                  : setPaid.mutate({ id: row.tx.id, paid: !row.paid })
+                              }
                             >
                               <ThumbsUp
                                 className={`size-4 ${row.paid ? "fill-current" : ""}`}
@@ -1002,6 +1020,90 @@ function Transactions() {
           {hasMore && <div ref={sentinel} className="h-px" />}
         </CardContent>
       </Card>
+
+      <Dialog open={!!recurrenceDelete} onOpenChange={(open) => !open && setRecurrenceDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir transação recorrente</DialogTitle>
+            <DialogDescription>
+              Quais ocorrências desta recorrência você quer excluir?
+            </DialogDescription>
+          </DialogHeader>
+          {recurrenceDelete && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setRecurrenceDelete(null)}>
+                Cancelar
+              </Button>
+              {recurrenceDelete.txId && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    removeTx.mutate(recurrenceDelete.txId!);
+                    setRecurrenceDelete(null);
+                  }}
+                >
+                  Só esta
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  removeRule.mutate({ rule_id: recurrenceDelete.ruleId, from: recurrenceDelete.date });
+                  setRecurrenceDelete(null);
+                }}
+              >
+                Desta em diante ({dayLabel(recurrenceDelete.date)})
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  removeRule.mutate({ rule_id: recurrenceDelete.ruleId });
+                  setRecurrenceDelete(null);
+                }}
+              >
+                Todas
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!paidPrompt} onOpenChange={(open) => !open && setPaidPrompt(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Marcar como paga</DialogTitle>
+            <DialogDescription>
+              Mudar a data para hoje ({dayLabel(localDateKey())}) ou manter {paidPrompt && dayLabel(paidPrompt.date)}?
+            </DialogDescription>
+          </DialogHeader>
+          {paidPrompt && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPaid.mutate({ id: paidPrompt.id, paid: true });
+                  setPaidPrompt(null);
+                }}
+              >
+                Manter {dayLabel(paidPrompt.date)}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setPaid.mutate({ id: paidPrompt.id, paid: true, date: localDateKey() });
+                  setPaidPrompt(null);
+                }}
+              >
+                Mudar para hoje
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

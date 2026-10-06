@@ -1,4 +1,4 @@
-import { and, eq, lte } from 'drizzle-orm'
+import { and, eq, isNull, lte, or } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { recurrenceRule, recurrenceRuleTag, transaction, transactionTag } from '#/db/schema'
 import { advance, periodKey } from '#/lib/recurrence'
@@ -14,13 +14,17 @@ export async function materializeDueRules(today: string, userId?: string) {
   const due = await db
     .select()
     .from(recurrenceRule)
-    .where(userId ? and(lte(recurrenceRule.nextRun, today), eq(recurrenceRule.userId, userId)) : lte(recurrenceRule.nextRun, today))
+    .where(and(
+      lte(recurrenceRule.nextRun, today),
+      or(isNull(recurrenceRule.endDate), lte(recurrenceRule.nextRun, recurrenceRule.endDate)),
+      userId ? eq(recurrenceRule.userId, userId) : undefined,
+    ))
 
   let inserted = 0
   for (const rule of due) {
     const tags = await db.select({ tagId: recurrenceRuleTag.tagId }).from(recurrenceRuleTag).where(eq(recurrenceRuleTag.recurrenceRuleId, rule.id))
     let next = rule.nextRun
-    while (next <= today) {
+    while (next <= today && (!rule.endDate || next <= rule.endDate)) {
       const res = await db
         .insert(transaction)
         .values({
