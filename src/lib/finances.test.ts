@@ -135,6 +135,13 @@ describe('scheduled recurrence projection', () => {
     ])
     expect(scheduledDatesInMonth('daily', '2026-08-30', '2026-07')).toEqual([])
   })
+
+  it('stops at the rule end date', () => {
+    expect(scheduledDatesInMonth('weekly', '2026-08-03', '2026-08', '2026-08-16')).toEqual([
+      '2026-08-03',
+      '2026-08-10',
+    ])
+  })
 })
 
 describe('app timezone dates', () => {

@@ -64,8 +64,12 @@ export type UpdateTransferInput = z.infer<typeof updateTransferInput>
 export const faturaPaymentInput = z.object({ account_id: z.string().uuid(), cycle_key: isoDate, paid_at: isoDate.optional() })
 export type FaturaPaymentInput = z.infer<typeof faturaPaymentInput>
 export const idInput = z.object({ id: z.string().uuid() })
-export const transactionPaidInput = z.object({ id: z.string().uuid(), paid: z.boolean() })
+// `date` moves the transaction to the day it was actually paid.
+export const transactionPaidInput = z.object({ id: z.string().uuid(), paid: z.boolean(), date: isoDate.optional() })
 export type TransactionPaidInput = z.infer<typeof transactionPaidInput>
+// `from` omitted = the rule and every row it generated; set = only occurrences on/after it.
+export const deleteRecurrenceInput = z.object({ rule_id: z.string().uuid(), from: isoDate.optional() })
+export type DeleteRecurrenceInput = z.infer<typeof deleteRecurrenceInput>
 
 export const categoryInput = z.object({
   name: z.string().trim().min(1).max(100),

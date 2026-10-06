@@ -1,13 +1,13 @@
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account, installmentPlan, recurrenceRule, recurrenceRuleTag, tag, transaction, transactionTag } from '#/db/schema'
 import { addMonths, splitInstallments } from '#/lib/installments'
 import { assertMoney, paidByDate } from '#/lib/money'
-import { appToday } from '#/lib/dates'
+import { addDays, appToday } from '#/lib/dates'
 import { normalizeForMatch } from '#/lib/csv'
 import { tagColorForIndex } from '#/lib/tag-colors'
 import { transferNote } from '#/lib/transaction-labels'
-import { inputTagIds, type ImportTransactionsInput, type TransactionInput, type TransactionPaidInput, type TransferInput, type UpdateRecurrenceRuleInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
+import { inputTagIds, type DeleteRecurrenceInput, type ImportTransactionsInput, type TransactionInput, type TransactionPaidInput, type TransferInput, type UpdateRecurrenceRuleInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
 import { assertOwnedTags } from './tags.core'
 
 export async function assertOwnedAccounts(userId: string, ids: (string | null | undefined)[]) {
@@ -178,8 +178,27 @@ export async function deleteRecurrenceRuleCore(userId: string, id: string) {
   return { deleted: rows.length }
 }
 
+/** UI delete of a recurring row: the whole series, or only occurrences on/after `from` (the rule ends the day before). */
+export async function deleteRecurrenceCore(userId: string, input: DeleteRecurrenceInput) {
+  const owned = and(eq(recurrenceRule.id, input.rule_id), eq(recurrenceRule.userId, userId))
+  return db.transaction(async (tx) => {
+    const [rule] = await tx.select({ id: recurrenceRule.id }).from(recurrenceRule).where(owned)
+    if (!rule) return { deleted: 0 }
+    // Rows before the rule: deleting the rule nulls their recurrence_rule_id (onDelete: set null).
+    const rows = await tx.delete(transaction).where(and(
+      eq(transaction.recurrenceRuleId, rule.id),
+      eq(transaction.userId, userId),
+      input.from ? gte(transaction.date, input.from) : undefined,
+    )).returning({ id: transaction.id })
+    if (input.from) await tx.update(recurrenceRule).set({ endDate: addDays(input.from, -1) }).where(owned)
+    else await tx.delete(recurrenceRule).where(owned)
+    return { deleted: rows.length }
+  })
+}
+
 export async function setTransactionPaidCore(userId: string, input: TransactionPaidInput) {
-  const rows = await db.update(transaction).set({ paid: input.paid }).where(and(eq(transaction.id, input.id), eq(transaction.userId, userId))).returning({ id: transaction.id })
+  // Moving to the payment day drops the old time: it belonged to the scheduled day.
+  const rows = await db.update(transaction).set({ paid: input.paid, ...(input.date && { date: input.date, time: null }) }).where(and(eq(transaction.id, input.id), eq(transaction.userId, userId))).returning({ id: transaction.id })
   return { updated: rows.length }
 }
 
