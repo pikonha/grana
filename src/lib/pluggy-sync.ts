@@ -63,8 +63,9 @@ function whenOf(iso: string) {
 }
 
 const daysBetween = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000
-const isCardPayment = (tx: PluggyTx) => /credit card payment/i.test(tx.category ?? '')
-const isFaturaCredit = (tx: PluggyTx) => tx.amount < 0 && (isCardPayment(tx) || /pagamento recebido/i.test(tx.description))
+// Pluggy's category is unreliable here (Nubank/XP payments come as `Transfers`), so the description counts too.
+const isCardPayment = (tx: PluggyTx) => /credit card payment/i.test(tx.category ?? '') || /pagamento de fatura/i.test(tx.description)
+const isFaturaCredit = (tx: PluggyTx) => tx.amount < 0 && (isCardPayment(tx) || /pagamento recebido|pagamentos validos normais/i.test(tx.description))
 
 export function planPluggy(input: PluggyInput): PluggyPlan {
   const { account } = input

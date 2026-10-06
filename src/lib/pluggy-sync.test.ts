@@ -107,6 +107,11 @@ describe('planPluggy — bank card payment', () => {
     const siblings = [{ ...xpCard, txs: [] }]
     expect(planPluggy(input({ txs: [payment], siblings })).inserts[0]).toMatchObject({ type: 'expend', counterAccountId: null })
   })
+
+  it('is recognized by description when Pluggy categorizes it as Transfers (Nubank, XP)', () => {
+    const nubank = tx({ id: 'pay', amount: -800, category: 'Transfers', description: 'Pagamento de fatura' })
+    expect(planPluggy(input({ txs: [nubank], siblings: [{ ...nuCard, txs: [] }] })).inserts[0]).toMatchObject({ type: 'transfer', counterAccountId: 'nucard' })
+  })
 })
 
 describe('planPluggy — credit card', () => {
@@ -153,6 +158,11 @@ describe('planPluggy — credit card', () => {
   it('a payment credit marks the closed cycle with the closest vencimento paid; no transaction', () => {
     // closes day 1, due day 8: Sep cycle (key 2026-09-01) is due Oct 8.
     const pay = tx({ id: 'pg', amount: -900, category: 'Credit card payment', description: 'Pagamento recebido', date: '2026-10-07T00:00:00.000Z' })
+    expect(planPluggy(card({ txs: [pay] }))).toEqual({ ...empty, faturaPayments: [{ accountId: 'nucard', cycleKey: '2026-09-01', paidAt: '2026-10-07' }] })
+  })
+
+  it('XP card payment credit (Transfers / "Pagamentos Validos Normais") also marks the fatura paid', () => {
+    const pay = tx({ id: 'pg', amount: -900, category: 'Transfers', description: 'Pagamentos Validos Normais', date: '2026-10-07T00:00:00.000Z' })
     expect(planPluggy(card({ txs: [pay] }))).toEqual({ ...empty, faturaPayments: [{ accountId: 'nucard', cycleKey: '2026-09-01', paidAt: '2026-10-07' }] })
   })
 

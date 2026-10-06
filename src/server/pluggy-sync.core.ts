@@ -51,12 +51,15 @@ export async function listPluggyAccountsCore(): Promise<PluggyRemoteAccount[]> {
 }
 
 async function fetchTransactions(accountId: string, from: string): Promise<PluggyTx[]> {
+  // GET /transactions (page-based) answers 410; v2 pages by cursor, `next` carries it as `after`.
   const out: PluggyTx[] = []
-  for (let page = 1; ; page++) {
-    const body = await get<{ results: PluggyTx[]; totalPages: number }>('/transactions', { accountId, from, pageSize: '500', page: String(page) })
+  let after: string | null = null
+  do {
+    const body: { results: PluggyTx[]; next: string | null } = await get('/v2/transactions', { accountId, dateFrom: from, ...(after ? { after } : {}) })
     out.push(...body.results)
-    if (page >= body.totalPages) return out
-  }
+    after = body.next ? new URL(body.next, API).searchParams.get('after') : null
+  } while (after)
+  return out
 }
 
 export async function syncPluggyAccount(acc: Account, linked: Account[]) {
