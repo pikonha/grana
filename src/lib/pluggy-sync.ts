@@ -2,10 +2,14 @@
  * Pure mapping + matching for Open Finance (Pluggy) account sync (no I/O). The fetch/db side
  * lives in `#/server/pluggy-sync.core.ts`. See docs/superpowers/specs/2026-10-02-open-finance-pluggy-design.md.
  */
-import { appTime, appToday } from './dates'
+import { addDays, appTime, appToday } from './dates'
 import { addMonths } from './installments'
 import { cycleKeyFor, vencimentoFor } from './faturas'
 import { assertMoney } from './money'
+
+/** A run never reads further back than this, whatever `sync_since` says (older history is hermes/manual). */
+export const PLUGGY_WINDOW_DAYS = 30
+export const pluggyFloor = (today = appToday()) => addDays(today, -PLUGGY_WINDOW_DAYS)
 
 export type PluggyTx = {
   id: string

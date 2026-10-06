@@ -3,7 +3,7 @@ import { db } from '#/db/index'
 import { account, faturaPayment, installmentPlan, transaction, type Account } from '#/db/schema'
 import { addDays, appToday } from '#/lib/dates'
 import { paidByDate } from '#/lib/money'
-import { planPluggy, type PluggyAccount, type PluggyTx } from '#/lib/pluggy-sync'
+import { planPluggy, pluggyFloor, type PluggyAccount, type PluggyTx } from '#/lib/pluggy-sync'
 import { createInstallmentPlanCore } from './transactions.core'
 import { pluggyEnabled, pluggyItemIds } from './pluggy-config'
 
@@ -13,7 +13,6 @@ import { pluggyEnabled, pluggyItemIds } from './pluggy-config'
  * Design: docs/superpowers/specs/2026-10-02-open-finance-pluggy-design.md.
  */
 const API = 'https://api.pluggy.ai'
-const WINDOW_DAYS = 30
 export const RECONNECT_ERROR = 'Reconecte no Meu Pluggy'
 // Item statuses that mean the connection needs the holder (Meu Pluggy refreshes the rest by itself).
 const BROKEN_ITEM = new Set(['LOGIN_ERROR', 'OUTDATED', 'WAITING_USER_INPUT'])
@@ -73,7 +72,7 @@ export async function syncPluggyAccount(acc: Account, linked: Account[]) {
   if (BROKEN_ITEM.has(item.status)) throw new Error(RECONNECT_ERROR)
 
   const today = appToday()
-  const from = [syncSince, addDays(today, -WINDOW_DAYS)].sort().at(-1)!
+  const from = [syncSince, pluggyFloor(today)].sort().at(-1)!
   const toPluggy = (a: Account): PluggyAccount | null => {
     const itemOf = remote.get(a.pluggyAccountId ?? '')?.itemId
     return itemOf ? { id: a.id, kind: a.kind, itemId: itemOf, closingDay: a.closingDay, dueDay: a.dueDay } : null

@@ -15,6 +15,7 @@ import { listTransactions } from "#/server/transactions";
 import type { Account } from "#/db/schema";
 import type { UpdateAccountInput } from "#/server/schemas";
 import { appToday } from "#/lib/dates";
+import { pluggyFloor } from "#/lib/pluggy-sync";
 import { availableLimit } from "#/lib/faturas";
 import { prepaidBalanceOf } from "#/lib/money";
 import {
@@ -85,7 +86,8 @@ const cryptoFromAccount = (a: Account): CryptoForm =>
         pluggyAccountId: a.pluggyAccountId ?? "",
         walletAddress: a.walletAddress ?? "",
         syncKind: a.syncKind && a.syncKind !== "pluggy" ? a.syncKind : "wallet",
-        syncSince: a.syncSince ?? appToday(),
+        // Pluggy reads at most 30 days back, so an older date is the same as the floor (and would fail `min`).
+        syncSince: a.pluggyAccountId && a.syncSince && a.syncSince < pluggyFloor() ? pluggyFloor() : a.syncSince ?? appToday(),
         syncEnabled: a.syncEnabled,
       }
     : emptyCrypto();
@@ -184,10 +186,12 @@ function CryptoFields({
               id={`${id}-pluggy-since`}
               type="date"
               value={value.syncSince}
+              min={pluggyFloor()}
               max={appToday()}
               onChange={(e) => set({ syncSince: e.target.value })}
               required
             />
+            <p className="text-xs text-muted-foreground">Até 30 dias atrás.</p>
           </div>
           <div className="flex items-end sm:col-span-3">
             <Label
