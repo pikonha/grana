@@ -1,10 +1,12 @@
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '#/db/index'
-import { account, installmentPlan, recurrenceRule, recurrenceRuleTag, transaction, transactionTag } from '#/db/schema'
+import { account, installmentPlan, recurrenceRule, recurrenceRuleTag, tag, transaction, transactionTag } from '#/db/schema'
 import { addMonths, splitInstallments } from '#/lib/installments'
 import { assertMoney, paidByDate } from '#/lib/money'
+import { normalizeForMatch } from '#/lib/csv'
+import { tagColorForIndex } from '#/lib/tag-colors'
 import { transferNote } from '#/lib/transaction-labels'
-import { inputTagIds, type TransactionInput, type TransferInput, type UpdateRecurrenceRuleInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
+import { inputTagIds, type ImportTransactionsInput, type TransactionInput, type TransactionPaidInput, type TransferInput, type UpdateRecurrenceRuleInput, type UpdateTransactionInput, type UpdateTransferInput } from './schemas'
 import { assertOwnedTags } from './tags.core'
 
 export async function assertOwnedAccounts(userId: string, ids: (string | null | undefined)[]) {
@@ -87,6 +89,67 @@ export async function createTransferCore(userId: string, input: TransferInput) {
   return { id: row.id }
 }
 
+export function uniqueImportTagNames(data: ImportTransactionsInput) {
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const row of data) {
+    for (const name of row.tag_names ?? []) {
+      const normalized = normalizeForMatch(name)
+      if (seen.has(normalized)) continue
+      seen.add(normalized)
+      names.push(name)
+    }
+  }
+  return names
+}
+
+export async function importTransactionsCore(userId: string, data: ImportTransactionsInput) {
+  data.forEach((row) => assertMoney(row.amount))
+  await assertOwnedAccounts(userId, data.map((row) => row.account_id))
+  return db.transaction(async (tx) => {
+    const uniqueTagNames = uniqueImportTagNames(data)
+    const tagMap = new Map<string, string>()
+    if (uniqueTagNames.length) {
+      const existingTags = await tx.select().from(tag).where(eq(tag.userId, userId))
+      const normToId = new Map<string, string>()
+      for (const current of existingTags) normToId.set(normalizeForMatch(current.name), current.id)
+      const missing: string[] = []
+      for (const name of uniqueTagNames) {
+        const normalized = normalizeForMatch(name)
+        const existing = normToId.get(normalized)
+        if (existing) {
+          tagMap.set(normalized, existing)
+        } else {
+          missing.push(name)
+        }
+      }
+      if (missing.length) {
+        const created = await tx.insert(tag).values(missing.map((name, index) => ({
+          userId, name, color: tagColorForIndex(existingTags.length + index),
+        }))).returning({ id: tag.id, name: tag.name })
+        for (const current of created) tagMap.set(normalizeForMatch(current.name), current.id)
+      }
+    }
+    const todayISO = new Date().toISOString().slice(0, 10)
+    const inserted = await tx.insert(transaction).values(data.map((row) => ({
+      userId, type: row.type, amount: row.amount, date: row.date, time: row.time ?? null,
+      accountId: row.account_id, note: row.note ?? null,
+      paid: row.paid ?? paidByDate(row.date, todayISO),
+    }))).returning({ id: transaction.id })
+    const links: { transactionId: string; tagId: string }[] = []
+    for (let i = 0; i < data.length; i++) {
+      const tagIds = new Set(
+        (data[i].tag_names ?? [])
+          .map((name) => tagMap.get(normalizeForMatch(name)))
+          .filter((id): id is string => Boolean(id)),
+      )
+      for (const tagId of tagIds) links.push({ transactionId: inserted[i].id, tagId })
+    }
+    if (links.length) await tx.insert(transactionTag).values(links)
+    return { count: inserted.length }
+  })
+}
+
 export async function updateTransferCore(userId: string, input: UpdateTransferInput) {
   assertMoney(input.amount)
   await assertOwnedAccounts(userId, [input.account_id, input.counter_account_id])
@@ -97,6 +160,26 @@ export async function updateTransferCore(userId: string, input: UpdateTransferIn
     .returning({ id: transaction.id })
   if (!row) throw new Error('Transfer not found')
   return { id: row.id }
+}
+
+export async function deleteTransactionCore(userId: string, id: string) {
+  const rows = await db.delete(transaction).where(and(eq(transaction.id, id), eq(transaction.userId, userId))).returning({ id: transaction.id })
+  return { deleted: rows.length }
+}
+
+export async function deleteInstallmentPlanCore(userId: string, id: string) {
+  const rows = await db.delete(installmentPlan).where(and(eq(installmentPlan.id, id), eq(installmentPlan.userId, userId))).returning({ id: installmentPlan.id })
+  return { deleted: rows.length }
+}
+
+export async function deleteRecurrenceRuleCore(userId: string, id: string) {
+  const rows = await db.delete(recurrenceRule).where(and(eq(recurrenceRule.id, id), eq(recurrenceRule.userId, userId))).returning({ id: recurrenceRule.id })
+  return { deleted: rows.length }
+}
+
+export async function setTransactionPaidCore(userId: string, input: TransactionPaidInput) {
+  const rows = await db.update(transaction).set({ paid: input.paid }).where(and(eq(transaction.id, input.id), eq(transaction.userId, userId))).returning({ id: transaction.id })
+  return { updated: rows.length }
 }
 
 export async function createInstallmentPlanCore(userId: string, input: TransactionInput & { installments: { count: number } }) {

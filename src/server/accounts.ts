@@ -1,10 +1,10 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, eq, or } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { db } from '#/db/index'
-import { account, recurrenceRule, transaction } from '#/db/schema'
+import { account } from '#/db/schema'
 import { z } from 'zod'
 import { accountInput, updateAccountInput } from './schemas'
-import { createAccountCore, updateAccountCore } from './accounts.core'
+import { createAccountCore, deleteAccountCore, updateAccountCore } from './accounts.core'
 import { requireUser } from './session.core'
 import { isSyncing, syncAccountNowCore, syncDueAccounts } from './chain-sync.core'
 
@@ -26,17 +26,7 @@ export const updateAccount = createServerFn({ method: 'POST' })
 
 export const deleteAccount = createServerFn({ method: 'POST' })
   .validator((data: unknown) => String((data as { id: string }).id))
-  .handler(async ({ data: id }) => {
-    const userId = await requireUser()
-    // Every transaction must keep an account, so the FK's `set null` must never fire.
-    const [used] = await db.select({ id: transaction.id }).from(transaction)
-      .where(and(eq(transaction.userId, userId), or(eq(transaction.accountId, id), eq(transaction.counterAccountId, id)))).limit(1)
-    const [usedByRule] = await db.select({ id: recurrenceRule.id }).from(recurrenceRule)
-      .where(and(eq(recurrenceRule.userId, userId), eq(recurrenceRule.accountId, id))).limit(1)
-    if (used || usedByRule) throw new Error('Esta conta tem transações ou recorrências. Mova-as para outra conta antes de excluir.')
-    await db.delete(account).where(and(eq(account.id, id), eq(account.userId, userId)))
-    return { success: true }
-  })
+  .handler(async ({ data: id }) => deleteAccountCore(await requireUser(), id))
 
 export const syncAccountNow = createServerFn({ method: 'POST' })
   .validator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data).id)

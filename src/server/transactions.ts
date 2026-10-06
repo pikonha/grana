@@ -1,12 +1,9 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { asc, desc, eq, sql } from 'drizzle-orm'
 import { db } from '#/db/index'
-import { installmentPlan, recurrenceRule, tag, transaction, transactionTag, type RecurrenceRule, type Tag, type Transaction } from '#/db/schema'
-import { assertMoney, paidByDate } from '#/lib/money'
-import { normalizeForMatch } from '#/lib/csv'
-import { tagColorForIndex } from '#/lib/tag-colors'
+import { installmentPlan, recurrenceRule, transaction, type RecurrenceRule, type Tag, type Transaction } from '#/db/schema'
 import { createTransactionInput, importTransactionsInput, transactionPaidInput, transferInput, updateRecurrenceRuleInput, updateTransactionInput, updateTransferInput } from './schemas'
-import { assertOwnedAccounts, createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, updateRecurrenceRuleCore, updateTransactionCore, updateTransferCore } from './transactions.core'
+import { createInstallmentPlanCore, createRecurrenceRuleCore, createTransactionCore, createTransferCore, deleteInstallmentPlanCore, deleteRecurrenceRuleCore, deleteTransactionCore, importTransactionsCore, setTransactionPaidCore, updateRecurrenceRuleCore, updateTransactionCore, updateTransferCore } from './transactions.core'
 import { tagsByRule, tagsByTransaction } from './tags.core'
 import { requireUser } from './session.core'
 import { materializeDueRules } from './recurrence.core'
@@ -57,8 +54,7 @@ export const updateTransaction = createServerFn({ method: 'POST' })
   })
 
 export const deleteTransaction = createServerFn({ method: 'POST' }).validator(idInput).handler(async ({ data: id }) => {
-  const userId = await requireUser()
-  await db.delete(transaction).where(and(eq(transaction.id, id), eq(transaction.userId, userId)))
+  await deleteTransactionCore(await requireUser(), id)
   return { success: true }
 })
 
@@ -67,8 +63,7 @@ export const listInstallmentPlans = createServerFn({ method: 'GET' }).handler(as
   return db.select().from(installmentPlan).where(eq(installmentPlan.userId, userId)).orderBy(asc(installmentPlan.startDate))
 })
 export const deleteInstallmentPlan = createServerFn({ method: 'POST' }).validator(idInput).handler(async ({ data: id }) => {
-  const userId = await requireUser()
-  await db.delete(installmentPlan).where(and(eq(installmentPlan.id, id), eq(installmentPlan.userId, userId)))
+  await deleteInstallmentPlanCore(await requireUser(), id)
   return { success: true }
 })
 
@@ -82,64 +77,17 @@ export const updateRecurrenceRule = createServerFn({ method: 'POST' })
   .validator((data: unknown) => updateRecurrenceRuleInput.parse(data))
   .handler(async ({ data }) => updateRecurrenceRuleCore(await requireUser(), data))
 export const deleteRecurrenceRule = createServerFn({ method: 'POST' }).validator(idInput).handler(async ({ data: id }) => {
-  const userId = await requireUser()
-  await db.delete(recurrenceRule).where(and(eq(recurrenceRule.id, id), eq(recurrenceRule.userId, userId)))
+  await deleteRecurrenceRuleCore(await requireUser(), id)
   return { success: true }
 })
 
 export const importTransactions = createServerFn({ method: 'POST' })
   .validator((data: unknown) => importTransactionsInput.parse(data))
-  .handler(async ({ data }) => {
-    const userId = await requireUser()
-    data.forEach((row) => assertMoney(row.amount))
-    await assertOwnedAccounts(userId, data.map((row) => row.account_id))
-    const uniqueTagNames = [...new Set(data.flatMap((row) => row.tag_names ?? []))]
-    const tagMap = new Map<string, string>()
-    if (uniqueTagNames.length) {
-      const existingTags = await db.select().from(tag).where(eq(tag.userId, userId))
-      const normToId = new Map<string, string>()
-      for (const t of existingTags) normToId.set(normalizeForMatch(t.name), t.id)
-      const missing: string[] = []
-      for (const name of uniqueTagNames) {
-        const norm = normalizeForMatch(name)
-        const existing = normToId.get(norm)
-        if (existing) {
-          tagMap.set(name, existing)
-        } else {
-          missing.push(name)
-        }
-      }
-      if (missing.length) {
-        const created = await db.insert(tag).values(missing.map((name, index) => ({
-          userId, name, color: tagColorForIndex(existingTags.length + index),
-        }))).returning({ id: tag.id, name: tag.name })
-        for (const t of created) tagMap.set(t.name, t.id)
-      }
-    }
-    const todayISO = new Date().toISOString().slice(0, 10)
-    return db.transaction(async (tx) => {
-      const inserted = await tx.insert(transaction).values(data.map((row) => ({
-        userId, type: row.type, amount: row.amount, date: row.date, time: row.time ?? null,
-        accountId: row.account_id, note: row.note ?? null,
-        paid: row.paid ?? paidByDate(row.date, todayISO),
-      }))).returning({ id: transaction.id })
-      const links: { transactionId: string; tagId: string }[] = []
-      for (let i = 0; i < data.length; i++) {
-        const tagNames = data[i].tag_names ?? []
-        for (const name of tagNames) {
-          const tagId = tagMap.get(name)
-          if (tagId) links.push({ transactionId: inserted[i].id, tagId })
-        }
-      }
-      if (links.length) await tx.insert(transactionTag).values(links)
-      return { count: inserted.length }
-    })
-  })
+  .handler(async ({ data }) => importTransactionsCore(await requireUser(), data))
 
 export const setTransactionPaid = createServerFn({ method: 'POST' })
   .validator((data: unknown) => transactionPaidInput.parse(data))
   .handler(async ({ data }) => {
-    const userId = await requireUser()
-    await db.update(transaction).set({ paid: data.paid }).where(and(eq(transaction.id, data.id), eq(transaction.userId, userId)))
+    await setTransactionPaidCore(await requireUser(), data)
     return { success: true }
   })

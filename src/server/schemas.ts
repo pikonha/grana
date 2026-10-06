@@ -65,11 +65,17 @@ export const faturaPaymentInput = z.object({ account_id: z.string().uuid(), cycl
 export type FaturaPaymentInput = z.infer<typeof faturaPaymentInput>
 export const idInput = z.object({ id: z.string().uuid() })
 export const transactionPaidInput = z.object({ id: z.string().uuid(), paid: z.boolean() })
+export type TransactionPaidInput = z.infer<typeof transactionPaidInput>
 
 export const categoryInput = z.object({
   name: z.string().trim().min(1).max(100),
   color: hexColor.default(DEFAULT_TAG_COLOR),
 })
+export const deleteTagInput = z.object({
+  id: z.string().uuid(),
+  replacementId: z.string().uuid().nullable().optional(),
+})
+export type DeleteTagInput = z.infer<typeof deleteTagInput>
 export const accountInput = z.object({
   name: z.string().trim().min(1).max(100),
   kind: z.enum(['credit_card', 'bank_account']), limit: cents.nonnegative().optional(),
@@ -105,3 +111,7 @@ export const importTransactionsInput = z.array(z.object({
   paid: z.boolean().optional(),
 })).min(1).max(1000)
 export type ImportTransactionsInput = z.infer<typeof importTransactionsInput>
+
+/** MCP tool arguments must be an object; the UI server function keeps the raw array contract. */
+export const importTransactionsToolInput = z.object({ transactions: importTransactionsInput })
+export type ImportTransactionsToolInput = z.infer<typeof importTransactionsToolInput>

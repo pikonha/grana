@@ -55,7 +55,7 @@ Service-worker registration is intentionally disabled in development.
 
 `/api/mcp` exposes the app over the Model Context Protocol (streamable HTTP), OAuth-protected via Better Auth's `mcp` plugin — discovery at `/.well-known/oauth-authorization-server`. Every tool call resolves `userId` from the OAuth session and is scoped to that user's own data, same as the web UI.
 
-Tools: `list_accounts`, `create_account`, `update_account`, `list_tags`, `create_tag`, `list_transactions`, `create_transaction`, `update_transaction`, `create_transfer`, `delete_transaction`, `list_installment_plans`, `delete_installment_plan`, `list_recurrence_rules`, `update_recurrence_rule`, `list_faturas`, `mark_fatura_paid`, `unmark_fatura_paid`. Deletes are limited to transactions and installment plans (no accounts, tags or rules).
+Tools: `list_accounts`, `create_account`, `update_account`, `delete_account`, `sync_account`, `list_tags`, `create_tag`, `delete_tag`, `list_transactions`, `create_transaction`, `update_transaction`, `delete_transaction`, `set_transaction_paid`, `create_transfer`, `update_transfer`, `import_transactions`, `list_installment_plans`, `delete_installment_plan`, `list_recurrence_rules`, `update_recurrence_rule`, `delete_recurrence_rule`, `list_faturas`, `mark_fatura_paid`, `unmark_fatura_paid`. The MCP surface mirrors the UI's finance operations, including crypto sync, CSV import, payment status, tag replacement/deletion, transfer editing, and recurrence deletion. Deletes are still limited to the same ownership and referential-integrity rules as the UI.
 
 ## Railway
 
