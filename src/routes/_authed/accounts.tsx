@@ -760,6 +760,7 @@ function Accounts() {
                       id={a.id}
                       value={editCrypto}
                       onChange={setEditCrypto}
+                      pluggy={pluggy}
                     />
                     <div className="flex gap-2 sm:col-span-3">
                       <Button disabled={update.isPending}>
