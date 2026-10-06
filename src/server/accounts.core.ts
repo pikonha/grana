@@ -49,6 +49,6 @@ export async function deleteAccountCore(userId: string, accountId: string) {
   const [usedByRule] = await db.select({ id: recurrenceRule.id }).from(recurrenceRule)
     .where(and(eq(recurrenceRule.userId, userId), eq(recurrenceRule.accountId, accountId))).limit(1)
   if (used || usedByRule) throw new Error('Esta conta tem transações ou recorrências. Mova-as para outra conta antes de excluir.')
-  await db.delete(account).where(and(eq(account.id, accountId), eq(account.userId, userId)))
-  return { success: true }
+  const rows = await db.delete(account).where(and(eq(account.id, accountId), eq(account.userId, userId))).returning({ id: account.id })
+  return { deleted: rows.length }
 }

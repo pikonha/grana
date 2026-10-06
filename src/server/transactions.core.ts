@@ -3,6 +3,7 @@ import { db } from '#/db/index'
 import { account, installmentPlan, recurrenceRule, recurrenceRuleTag, tag, transaction, transactionTag } from '#/db/schema'
 import { addMonths, splitInstallments } from '#/lib/installments'
 import { assertMoney, paidByDate } from '#/lib/money'
+import { appToday } from '#/lib/dates'
 import { normalizeForMatch } from '#/lib/csv'
 import { tagColorForIndex } from '#/lib/tag-colors'
 import { transferNote } from '#/lib/transaction-labels'
@@ -26,7 +27,7 @@ export async function createTransactionCore(userId: string, input: TransactionIn
   const tagIds = inputTagIds(input)
   await assertOwnedTags(userId, tagIds)
   await assertOwnedAccounts(userId, [input.account_id])
-  const todayISO = new Date().toISOString().slice(0, 10)
+  const todayISO = appToday()
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(transaction).values({
       userId, type: input.type, amount: input.amount, date: input.date, time: input.time ?? null,
@@ -130,7 +131,7 @@ export async function importTransactionsCore(userId: string, data: ImportTransac
         for (const current of created) tagMap.set(normalizeForMatch(current.name), current.id)
       }
     }
-    const todayISO = new Date().toISOString().slice(0, 10)
+    const todayISO = appToday()
     const inserted = await tx.insert(transaction).values(data.map((row) => ({
       userId, type: row.type, amount: row.amount, date: row.date, time: row.time ?? null,
       accountId: row.account_id, note: row.note ?? null,
