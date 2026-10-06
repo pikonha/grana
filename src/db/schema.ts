@@ -17,6 +17,8 @@ export const account = pgTable('account', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(), name: text().notNull(),
   kind: accountKindEnum().notNull(), limit: integer(),
   closingDay: integer('closing_day'), dueDay: integer('due_day'), prepaid: boolean().notNull().default(false),
+  /** Counts toward the home "Saldo total" (all-accounts view). */
+  includeInTotal: boolean('include_in_total').notNull().default(true),
   // Crypto auto-sync: an account is crypto when wallet_address is set (lowercase 0x…).
   walletAddress: text('wallet_address'), syncKind: syncKindEnum('sync_kind'),
   /** Open Finance (Pluggy): the Pluggy account UUID; set together with sync_kind = 'pluggy'. */

@@ -7,6 +7,7 @@ import {
   deleteAccount,
   listAccounts,
   listPluggyAccounts,
+  setAccountIncludeInTotal,
   syncAccountNow,
   updateAccount,
 } from "#/server/accounts";
@@ -410,7 +411,10 @@ function Accounts() {
           current
             .map((account) =>
               account.id === input.id
-                ? optimisticAccount(input, account.id)
+                ? optimisticAccount(
+                    { includeInTotal: account.includeInTotal, ...input },
+                    account.id,
+                  )
                 : account,
             )
             .sort((a, b) => a.name.localeCompare(b.name)),
@@ -448,6 +452,25 @@ function Accounts() {
       qc.setQueryData(financeQueryKeys.accounts, context?.previousAccounts);
       qc.setQueryData(financeQueryKeys.faturas, context?.previousFaturas);
     },
+    onSettled: invalidateAll,
+  });
+  const toggleTotal = useMutation({
+    mutationFn: (input: { id: string; includeInTotal: boolean }) =>
+      setAccountIncludeInTotal({ data: input }),
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: financeQueryKeys.accounts });
+      const previous = qc.getQueryData<Account[]>(financeQueryKeys.accounts);
+      qc.setQueryData<Account[]>(financeQueryKeys.accounts, (current = []) =>
+        current.map((account) =>
+          account.id === input.id
+            ? { ...account, includeInTotal: input.includeInTotal }
+            : account,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_error, _input, context) =>
+      qc.setQueryData(financeQueryKeys.accounts, context?.previous),
     onSettled: invalidateAll,
   });
   const sync = useMutation({
@@ -622,8 +645,23 @@ function Accounts() {
                         : syncedAgo(a.lastSyncedAt)}
                   </span>
                 )}
+                <Label
+                  htmlFor={`include-total-${a.id}`}
+                  className="ml-auto flex cursor-pointer items-center gap-2 text-sm"
+                >
+                  <Checkbox
+                    id={`include-total-${a.id}`}
+                    checked={a.includeInTotal}
+                    onChange={(e) =>
+                      toggleTotal.mutate({
+                        id: a.id,
+                        includeInTotal: e.target.checked,
+                      })
+                    }
+                  />
+                  No saldo total
+                </Label>
                 <Button
-                  className="ml-auto"
                   variant="outline"
                   size="sm"
                   onClick={() => beginEdit(a)}

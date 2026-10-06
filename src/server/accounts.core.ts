@@ -14,6 +14,7 @@ export function accountValues(userId: string, data: AccountInput) {
     closingDay: isCreditCard && !prepaid ? data.closingDay ?? null : null,
     dueDay: isCreditCard && !prepaid ? data.dueDay ?? null : null,
     prepaid,
+    ...(data.includeInTotal !== undefined && { includeInTotal: data.includeInTotal }),
     ...syncValues(data),
   }
 }
@@ -43,6 +44,12 @@ export async function updateAccountCore(userId: string, input: UpdateAccountInpu
   const resync = (input.walletAddress !== undefined || input.pluggyAccountId !== undefined)
     && (values.walletAddress !== current.walletAddress || values.pluggyAccountId !== current.pluggyAccountId || values.syncKind !== current.syncKind || values.syncSince !== current.syncSince)
   const [row] = await db.update(account).set(resync ? { ...values, syncCursor: null, lastSyncedAt: null, lastSyncError: null } : values).where(and(eq(account.id, input.id), eq(account.userId, userId))).returning({ id: account.id })
+  if (!row) throw new Error('Account not found')
+  return { id: row.id }
+}
+
+export async function setAccountIncludeInTotalCore(userId: string, accountId: string, includeInTotal: boolean) {
+  const [row] = await db.update(account).set({ includeInTotal }).where(and(eq(account.id, accountId), eq(account.userId, userId))).returning({ id: account.id })
   if (!row) throw new Error('Account not found')
   return { id: row.id }
 }

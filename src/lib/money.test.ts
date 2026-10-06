@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balanceOf, isOpeningBalance, isPaymentTrackable, paidByDate, savingsRate, signedAmount } from './money'
+import { balanceOf, isOpeningBalance, isPaymentTrackable, paidByDate, prepaidBalanceOf, savingsRate, signedAmount } from './money'
 
 describe('balanceOf', () => {
   it('sums paid transactions only when filtered', () => {
@@ -11,6 +11,21 @@ describe('balanceOf', () => {
     const paid = all.filter((tx) => tx.paid)
     expect(balanceOf(paid)).toBe(3000)
     expect(balanceOf(all)).toBe(4000)
+  })
+})
+
+describe('prepaidBalanceOf summed over accounts (home total)', () => {
+  const rows = [
+    { type: 'earn' as const, amount: 5000, accountId: 'a', counterAccountId: null },
+    { type: 'expend' as const, amount: 1200, accountId: 'b', counterAccountId: null },
+    { type: 'transfer' as const, amount: 3000, accountId: 'a', counterAccountId: 'b' },
+  ]
+  const total = (ids: string[]) => ids.reduce((sum, id) => sum + prepaidBalanceOf(id, rows), 0)
+  it('equals balanceOf when every account is included (transfers cancel)', () => {
+    expect(total(['a', 'b'])).toBe(balanceOf(rows.filter((r) => r.type !== 'transfer') as Array<{ type: 'earn' | 'expend'; amount: number }>))
+  })
+  it('counts the transfer leaving an included account for an excluded one', () => {
+    expect(total(['a'])).toBe(2000)
   })
 })
 

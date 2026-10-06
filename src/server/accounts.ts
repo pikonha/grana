@@ -4,7 +4,7 @@ import { db } from '#/db/index'
 import { account } from '#/db/schema'
 import { z } from 'zod'
 import { accountInput, updateAccountInput } from './schemas'
-import { createAccountCore, deleteAccountCore, updateAccountCore } from './accounts.core'
+import { createAccountCore, deleteAccountCore, setAccountIncludeInTotalCore, updateAccountCore } from './accounts.core'
 import { requireUser } from './session.core'
 import { listPluggyAccountsCore } from './pluggy-sync.core'
 import { pluggyEnabled } from './pluggy-config'
@@ -25,6 +25,10 @@ export const createAccount = createServerFn({ method: 'POST' })
 export const updateAccount = createServerFn({ method: 'POST' })
   .validator((data: unknown) => updateAccountInput.parse(data))
   .handler(async ({ data }) => updateAccountCore(await requireUser(), data))
+
+export const setAccountIncludeInTotal = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => z.object({ id: z.string().uuid(), includeInTotal: z.boolean() }).parse(data))
+  .handler(async ({ data }) => setAccountIncludeInTotalCore(await requireUser(), data.id, data.includeInTotal))
 
 export const deleteAccount = createServerFn({ method: 'POST' })
   .validator((data: unknown) => String((data as { id: string }).id))

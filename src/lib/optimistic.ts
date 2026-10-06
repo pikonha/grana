@@ -102,6 +102,7 @@ export function optimisticAccount(
     closingDay?: number;
     dueDay?: number;
     prepaid?: boolean;
+    includeInTotal?: boolean;
     walletAddress?: string | null;
     pluggyAccountId?: string | null;
     syncKind?: NonNullable<Account["syncKind"]>;
@@ -121,6 +122,7 @@ export function optimisticAccount(
     closingDay: isCreditCard && !prepaid ? input.closingDay ?? null : null,
     dueDay: isCreditCard && !prepaid ? input.dueDay ?? null : null,
     prepaid,
+    includeInTotal: input.includeInTotal ?? true,
     walletAddress: input.walletAddress ?? null,
     pluggyAccountId: input.pluggyAccountId ?? null,
     syncKind: input.pluggyAccountId ? "pluggy" : input.walletAddress ? input.syncKind ?? null : null,

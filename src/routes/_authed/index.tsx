@@ -18,7 +18,7 @@ import type {
 } from "#/server/schemas";
 import type { Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
-import { balanceOf, isOpeningBalance, prepaidBalanceOf, savingsRate } from "#/lib/money";
+import { isOpeningBalance, prepaidBalanceOf, savingsRate } from "#/lib/money";
 import { appToday } from "#/lib/dates";
 import {
   financeQueryKeys,
@@ -91,9 +91,16 @@ function Dashboard() {
       inAccount(transaction) &&
       !isOpeningBalance(transaction)
   );
+  const paidTransactions = transactions.filter((tx) => tx.paid);
+  // "Todas as contas" = sum of the accounts marked to count toward the total.
   const balance = accountId
     ? prepaidBalanceOf(accountId, transactions)
-    : balanceOf(paidStatsTransactions);
+    : accounts
+        .filter((account) => account.includeInTotal)
+        .reduce(
+          (total, account) => total + prepaidBalanceOf(account.id, paidTransactions),
+          0,
+        );
   const sumByType = (type: "earn" | "expend") =>
     monthTransactions
       .filter((transaction) => transaction.type === type)

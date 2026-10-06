@@ -86,6 +86,8 @@ export const accountInput = z.object({
   closingDay: z.number().int().min(1).max(28).optional(),
   dueDay: z.number().int().min(1).max(28).optional(),
   prepaid: z.boolean().optional(),
+  // Omitted = keep as is (new accounts default to true).
+  includeInTotal: z.boolean().optional(),
   // Crypto sync. walletAddress: omitted = keep as is, null = no longer a crypto account.
   walletAddress: z.string().trim().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddress must be 0x + 40 hex chars').transform((a) => a.toLowerCase()).nullable().optional(),
   syncKind: z.enum(['wallet', 'etherfi_cash']).optional(),

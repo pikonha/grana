@@ -78,6 +78,13 @@
       "when": 1791313093467,
       "tag": "0010_pluggy_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791316947239,
+      "tag": "0011_account_include_in_total",
+      "breakpoints": true
     }
   ]
 }

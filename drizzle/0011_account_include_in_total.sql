@@ -1,0 +1,1 @@
+ALTER TABLE "account" ADD COLUMN "include_in_total" boolean DEFAULT true NOT NULL;
