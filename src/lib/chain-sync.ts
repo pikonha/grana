@@ -4,6 +4,7 @@
  */
 import { addDays, appTime, appToday } from './dates'
 import { assertMoney } from './money'
+import { RECURRENCE_MATCH_DAYS } from './recurrence'
 import { DEFAULT_TRANSFER_NOTE } from './transaction-labels'
 
 export type SyncKind = 'wallet' | 'etherfi_cash'
@@ -34,14 +35,18 @@ export type PlanInput = {
   /** Transfers into this account (top-up dedupe). */
   transfersIn: { amount: number; usdAmount: number | null; date: string }[]
   /** Unclaimed (`external_id IS NULL`) earn/expend rows of this account. */
-  existing: { id: string; type: 'earn' | 'expend' | 'transfer'; amount: number; date: string }[]
+  existing: { id: string; type: 'earn' | 'expend' | 'transfer'; amount: number; date: string; recurrenceRuleId?: string | null }[]
 }
 
 export type SyncRow = {
   externalId: string; type: 'earn' | 'expend' | 'transfer'; amount: number; usdAmount: number
   date: string; time: string; accountId: string; counterAccountId: string | null; note: string | null
 }
-export type SyncPlan = { inserts: SyncRow[]; claims: { id: string; externalId: string; usdAmount: number }[] }
+export type SyncPlan = {
+  inserts: SyncRow[]
+  /** `actual` is set when a recurrence occurrence is claimed: the real charge replaces the forecast. */
+  claims: { id: string; externalId: string; usdAmount: number; actual?: { amount: number; date: string; time: string } }[]
+}
 
 export const ETHERFI_NOTE = 'ether.fi Cash'
 
@@ -176,17 +181,21 @@ export function planSync(input: PlanInput): SyncPlan {
  * A synced earn/expend that hermes or the user already entered (same type, ±2 days,
  * ±3% of the converted amount) claims that row instead of inserting; the row keeps
  * its amount, note and tags. Closest amount wins, then closest date.
+ * A recurrence occurrence matches within ±7 days and takes the real amount and date.
  */
 function matchExisting(rows: SyncRow[], existing: PlanInput['existing']): SyncPlan {
   const pool = [...existing]
   const plan: SyncPlan = { inserts: [], claims: [] }
   for (const r of rows) {
     const best = r.type === 'transfer' ? undefined : pool
-      .filter((e) => e.type === r.type && daysBetween(e.date, r.date) <= 2 && Math.abs(e.amount - r.amount) <= 0.03 * r.amount)
+      .filter((e) => e.type === r.type && daysBetween(e.date, r.date) <= (e.recurrenceRuleId ? RECURRENCE_MATCH_DAYS : 2) && Math.abs(e.amount - r.amount) <= 0.03 * r.amount)
       .sort((a, b) => Math.abs(a.amount - r.amount) - Math.abs(b.amount - r.amount) || daysBetween(a.date, r.date) - daysBetween(b.date, r.date))[0]
     if (!best) { plan.inserts.push(r); continue }
     pool.splice(pool.indexOf(best), 1)
-    plan.claims.push({ id: best.id, externalId: r.externalId, usdAmount: r.usdAmount })
+    plan.claims.push({
+      id: best.id, externalId: r.externalId, usdAmount: r.usdAmount,
+      ...(best.recurrenceRuleId && { actual: { amount: r.amount, date: r.date, time: r.time } }),
+    })
   }
   return plan
 }

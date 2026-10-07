@@ -3,6 +3,7 @@ import { db } from '#/db/index'
 import { account, transaction, type Account } from '#/db/schema'
 import { CHAINS, dateOf, externalIdOf, parseSpendLog, parseTransferItem, parseTransferLog, planSync, STABLECOINS, type LogMeta, type RawLog, type SpendLog, type SyncKind, type SyncPlan, type TokenTransfer, type TransferItem } from '#/lib/chain-sync'
 import { addDays } from '#/lib/dates'
+import { RECURRENCE_MATCH_DAYS } from '#/lib/recurrence'
 import { listPluggyAccountsCore, RECONNECT_ERROR, syncPluggyAccount } from './pluggy-sync.core'
 import { pluggyEnabled } from './pluggy-config'
 import type { PluggyWebhookEvent } from './pluggy-webhook'
@@ -228,9 +229,9 @@ async function syncAccount(acc: Account, linked: Account[]) {
   if (dates.length) {
     const [first, last] = [dates[0], dates.at(-1)!]
     const rates = await fetchPtax(addDays(first, -10), last)
-    const existing = await db.select({ id: transaction.id, type: transaction.type, amount: transaction.amount, date: transaction.date }).from(transaction).where(and(
+    const existing = await db.select({ id: transaction.id, type: transaction.type, amount: transaction.amount, date: transaction.date, recurrenceRuleId: transaction.recurrenceRuleId }).from(transaction).where(and(
       eq(transaction.userId, acc.userId), eq(transaction.accountId, acc.id), isNull(transaction.externalId),
-      inArray(transaction.type, ['earn', 'expend']), between(transaction.date, addDays(first, -2), addDays(last, 2)),
+      inArray(transaction.type, ['earn', 'expend']), between(transaction.date, addDays(first, -RECURRENCE_MATCH_DAYS), addDays(last, RECURRENCE_MATCH_DAYS)),
     ))
     const transfersIn = await db.select({ amount: transaction.amount, usdAmount: transaction.usdAmount, date: transaction.date }).from(transaction).where(and(
       eq(transaction.userId, acc.userId), eq(transaction.counterAccountId, acc.id), eq(transaction.type, 'transfer'),
@@ -249,7 +250,7 @@ async function syncAccount(acc: Account, linked: Account[]) {
         .onConflictDoNothing({ target: [transaction.userId, transaction.externalId] })
     }
     for (const claim of plan.claims) {
-      await tx.update(transaction).set({ externalId: claim.externalId, usdAmount: claim.usdAmount })
+      await tx.update(transaction).set({ externalId: claim.externalId, usdAmount: claim.usdAmount, ...claim.actual })
         .where(and(eq(transaction.id, claim.id), eq(transaction.userId, acc.userId), isNull(transaction.externalId)))
     }
     // Only if the config this run used is still current: an edit mid-run reset the cursor for a new backfill.

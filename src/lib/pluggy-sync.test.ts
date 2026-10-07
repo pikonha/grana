@@ -44,6 +44,14 @@ describe('planPluggy — matching hermes / manual rows', () => {
     expect(plan).toEqual({ ...empty, claims: [{ id: 'r1', externalId: 'pluggy:t1' }] })
   })
 
+  it('claims a recurrence occurrence within ±7 days and ±3%, taking the real amount and date', () => {
+    const plan = planPluggy(input({ txs: [tx()], existing: [row({ date: '2026-09-15', amount: 5000, recurrenceRuleId: 'rule' })] }))
+    expect(plan.claims).toEqual([{ id: 'r1', externalId: 'pluggy:t1', actual: { amount: 5050, date: '2026-09-20', time: null } }])
+    expect(plan.inserts).toEqual([])
+    const far = planPluggy(input({ txs: [tx()], existing: [row({ date: '2026-09-12', recurrenceRuleId: 'rule' })] }))
+    expect(far.claims).toEqual([])
+  })
+
   it('picks the closest date, and one row is claimed only once', () => {
     const existing = [row({ id: 'far', date: '2026-09-22' }), row({ id: 'near', date: '2026-09-21' })]
     const plan = planPluggy(input({ txs: [tx({ id: 'a' }), tx({ id: 'b' })], existing }))

@@ -196,6 +196,18 @@ describe('planSync — matching hermes/manual rows', () => {
     expect(plan.claims.map((c) => c.id)).toEqual(['close-amount-near-date'])
   })
 
+  it('claims a recurrence occurrence up to 7 days off and takes the real amount and date', () => {
+    const plan = planSync(base({
+      transfers: [outgoing],
+      existing: [
+        { id: 'manual', type: 'expend', amount: 52500, date: '2026-09-17' },
+        { id: 'rule', type: 'expend', amount: 52000, date: '2026-09-15', recurrenceRuleId: 'r1' },
+      ],
+    }))
+    expect(plan.inserts).toEqual([])
+    expect(plan.claims).toMatchObject([{ id: 'rule', actual: { amount: 52500, date: '2026-09-22' } }])
+  })
+
   it('never claims the same row twice', () => {
     const plan = planSync(base({
       transfers: [outgoing, transfer({ from: SAFE, to: OTHER, logIndex: 4 })],

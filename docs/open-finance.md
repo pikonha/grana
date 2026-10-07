@@ -26,6 +26,7 @@ Meu Pluggy items fire webhooks like any item; the page-open and button triggers 
 - Transactions come from `GET /v2/transactions` (cursor); the page-based `GET /transactions` answers 410.
 - Bank account: inflow → `earn`, outflow → `expend`; a card-payment outflow (category *Credit card payment* or description *Pagamento de fatura*, since Nubank and XP categorize it as *Transfers*) → `transfer` to the card (credit of the same amount within ±3 days, else the card of the same item, else a plain `expend`).
 - Card: charge → `expend`; installments claim (or create) an installment plan; a payment credit marks the closest closed fatura paid (no transaction); other credits (refunds) → `earn`, which reduces the fatura total.
+- Hermes/manual rows (same account, direction, exact amount, ±2 days) are claimed instead of duplicated. A recurrence occurrence matches within ±7 days and ±3%, and takes the real amount, date and time. A rule that fires after its charge was already synced links that row instead of inserting (see `docs/crypto-sync.md`).
 - Rows whose Pluggy id was recreated are re-pointed instead of duplicated.
 - Each account applies in one DB transaction; errors land in `last_sync_error`. A broken connection shows *Reconecte no Meu Pluggy*.
 

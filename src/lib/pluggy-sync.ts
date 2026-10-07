@@ -6,6 +6,7 @@ import { addDays, appTime, appToday } from './dates'
 import { addMonths } from './installments'
 import { cycleKeyFor, vencimentoFor } from './faturas'
 import { assertMoney } from './money'
+import { nearRecurrenceAmount, RECURRENCE_MATCH_DAYS } from './recurrence'
 
 /** A run never reads further back than this, whatever `sync_since` says (older history is hermes/manual). */
 export const PLUGGY_WINDOW_DAYS = 30
@@ -26,6 +27,7 @@ export type PluggyAccount = { id: string; kind: 'credit_card' | 'bank_account'; 
 export type ExistingRow = {
   id: string; type: 'earn' | 'expend' | 'transfer'; amount: number; date: string
   accountId: string; counterAccountId: string | null; externalId: string | null; installmentPlanId: string | null
+  recurrenceRuleId?: string | null
 }
 
 export type PluggyInput = {
@@ -48,8 +50,9 @@ export type PluggyRow = {
 }
 export type PluggyPlan = {
   inserts: PluggyRow[]
-  /** Hermes/manual rows (external_id null) that become the synced row. */
-  claims: { id: string; externalId: string }[]
+  /** Hermes/manual rows (external_id null) that become the synced row. A claimed recurrence
+   * occurrence takes the real amount/date (`actual`): the forecast becomes the charge. */
+  claims: { id: string; externalId: string; actual?: { amount: number; date: string; time: string | null } }[]
   /** Rows whose pluggy id was recreated: `external_id` moves from `from` to `externalId`. */
   repoints: { id: string; from: string; externalId: string }[]
   /** Plans to create with `createInstallmentPlan`; `claims[].index` is the 0-based row to claim. */
@@ -121,13 +124,15 @@ export function planPluggy(input: PluggyInput): PluggyPlan {
     }
 
     const match = pool
-      .filter((r) => r.amount === amount && daysBetween(r.date, date) <= 2 && (inflow
+      .filter((r) => (r.recurrenceRuleId
+        ? nearRecurrenceAmount(amount, r.amount) && daysBetween(r.date, date) <= RECURRENCE_MATCH_DAYS
+        : r.amount === amount && daysBetween(r.date, date) <= 2) && (inflow
         ? r.accountId === account.id ? r.type === 'earn' : r.type === 'transfer' && r.counterAccountId === account.id
         : r.accountId === account.id && (r.type === 'expend' || r.type === 'transfer')))
       .sort((a, b) => daysBetween(a.date, date) - daysBetween(b.date, date))[0]
     if (match) {
       pool.splice(pool.indexOf(match), 1)
-      if (match.externalId === null) plan.claims.push({ id: match.id, externalId })
+      if (match.externalId === null) plan.claims.push({ id: match.id, externalId, ...(match.recurrenceRuleId && { actual: { amount, date, time } }) })
       else plan.repoints.push({ id: match.id, from: match.externalId, externalId })
       continue
     }

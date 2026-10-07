@@ -4,6 +4,14 @@
  */
 export type Interval = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
+/**
+ * A recurrence occurrence and a synced charge are the same payment within ±7 days and ±3%:
+ * the real charge lands a few days off the scheduled one, and a USD card charge drifts with FX.
+ * ponytail: a different purchase that close in day and amount gets matched too.
+ */
+export const RECURRENCE_MATCH_DAYS = 7
+export const nearRecurrenceAmount = (amount: number, scheduled: number) => Math.abs(amount - scheduled) <= 0.03 * scheduled
+
 function parse(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d))

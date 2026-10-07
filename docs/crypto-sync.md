@@ -88,6 +88,8 @@ Before inserting a synced `earn`/`expend`, the planner looks for a row that:
 
 The closest amount wins, then the closest date. A match gets `external_id` and `usd_amount` set, and it keeps its own amount, note and tags. Matching only happens at sync time, so a hermes row posted after the sync imported the same movement is a duplicate.
 
+Recurrence occurrences (`recurrence_rule_id` set) match within ±7 days instead of ±2, and a match takes the real amount, date and time: the forecast becomes the charge. The other direction is covered too: when a rule fires after its charge was already synced, `materializeDueRules` links the synced row (same account and type, ±7 days, ±3%; ±3 days for weekly rules, same day for daily ones) as the occurrence instead of inserting one, and gives it the rule's note and tags.
+
 ## Rows and ids
 
 - `external_id` is `<chainid>:<txhash>:<logIndex>`, with `UNIQUE(user_id, external_id)`.

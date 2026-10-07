@@ -3,6 +3,7 @@ import { db } from '#/db/index'
 import { account, faturaPayment, installmentPlan, transaction, type Account } from '#/db/schema'
 import { addDays, appToday } from '#/lib/dates'
 import { paidByDate } from '#/lib/money'
+import { RECURRENCE_MATCH_DAYS } from '#/lib/recurrence'
 import { planPluggy, pluggyFloor, type PluggyAccount, type PluggyTx } from '#/lib/pluggy-sync'
 import { createInstallmentPlanCore } from './transactions.core'
 import { pluggyEnabled, pluggyItemIds } from './pluggy-config'
@@ -85,10 +86,11 @@ export async function syncPluggyAccount(acc: Account, linked: Account[]) {
     .flatMap((a) => toPluggy(a) ?? [])
     .map(async (s) => ({ ...s, txs: await fetchTransactions(linked.find((a) => a.id === s.id)!.pluggyAccountId!, from) })))
 
-  const earliest = addDays(from, -2)
+  const earliest = addDays(from, -RECURRENCE_MATCH_DAYS)
   const existing = await db.select({
     id: transaction.id, type: transaction.type, amount: transaction.amount, date: transaction.date,
     accountId: transaction.accountId, counterAccountId: transaction.counterAccountId, externalId: transaction.externalId, installmentPlanId: transaction.installmentPlanId,
+    recurrenceRuleId: transaction.recurrenceRuleId,
   }).from(transaction).where(and(
     eq(transaction.userId, acc.userId), gte(transaction.date, earliest),
     or(eq(transaction.accountId, acc.id), and(eq(transaction.type, 'transfer'), eq(transaction.counterAccountId, acc.id))),
@@ -122,7 +124,7 @@ export async function syncPluggyAccount(acc: Account, linked: Account[]) {
         .onConflictDoNothing({ target: [transaction.userId, transaction.externalId] })
     }
     for (const claim of plan.claims) {
-      await tx.update(transaction).set({ externalId: claim.externalId })
+      await tx.update(transaction).set({ externalId: claim.externalId, ...claim.actual })
         .where(and(eq(transaction.id, claim.id), eq(transaction.userId, acc.userId), isNull(transaction.externalId)))
     }
     for (const r of plan.repoints) {
