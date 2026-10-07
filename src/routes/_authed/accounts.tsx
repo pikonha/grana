@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Pencil, RefreshCw, Save, X } from "lucide-react";
+import { Pencil, RefreshCw, Save, Trash2, TriangleAlert, X } from "lucide-react";
 import {
   createAccount,
   deleteAccount,
@@ -663,15 +663,20 @@ function Accounts() {
                 </Label>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="icon"
+                  className="size-8"
+                  aria-label="Editar"
+                  title="Editar"
                   onClick={() => beginEdit(a)}
                 >
                   <Pencil className="size-4" />
-                  Editar
                 </Button>
                 <Button
                   variant="destructive"
-                  size="sm"
+                  size="icon"
+                  className="size-8"
+                  aria-label="Excluir"
+                  title="Excluir"
                   onClick={() => {
                     if (
                       window.confirm(`Excluir "${a.name}"?`)
@@ -679,24 +684,30 @@ function Accounts() {
                       remove.mutate(a.id);
                   }}
                 >
-                  Excluir
+                  <Trash2 className="size-4" />
                 </Button>
                 {(a.walletAddress || a.pluggyAccountId) && (
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="icon"
+                    className="size-8"
+                    aria-label="Sincronizar"
+                    title="Sincronizar"
                     disabled={a.syncing || (sync.isPending && sync.variables === a.id)}
                     onClick={() => sync.mutate(a.id)}
                   >
                     <RefreshCw
                       className={`size-4 ${a.syncing || (sync.isPending && sync.variables === a.id) ? "animate-spin" : ""}`}
                     />
-                    Sincronizar
                   </Button>
                 )}
                 {(a.walletAddress || a.pluggyAccountId) && a.lastSyncError && (
-                  <p role="alert" className="w-full text-sm text-destructive">
-                    Erro na sincronização: {a.lastSyncError}
+                  <p
+                    role="alert"
+                    className="flex w-full items-start gap-2 border-2 border-destructive bg-destructive/10 p-2 text-sm"
+                  >
+                    <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+                    <span>Erro na sincronização: {a.lastSyncError}</span>
                   </p>
                 )}
                 {editId === a.id && (
