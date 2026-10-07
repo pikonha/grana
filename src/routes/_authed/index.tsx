@@ -28,7 +28,24 @@ import {
   optimisticTransaction,
   optimisticTransfer,
 } from "#/lib/optimistic";
-import { StatTile } from "@/components/charts";
+import {
+  Bar,
+  BarChart,
+  Cell,
+  LabelList,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  AXIS_PROPS,
+  CHART_IN,
+  CHART_OTHER,
+  ChartTooltip,
+  StatTile,
+} from "@/components/charts";
 import { ImportCsvModal } from "@/components/ImportCsvModal";
 import { TransactionModal } from "@/components/TransactionModal";
 import { TransferModal } from "@/components/TransferModal";
@@ -83,14 +100,21 @@ function Dashboard() {
     ): transaction is typeof transaction & { type: "earn" | "expend" } =>
       transaction.type !== "transfer"
   );
-  const paidStatsTransactions = statsTransactions.filter((tx) => tx.paid);
-  const monthKey = appToday().slice(0, 7);
-  const monthTransactions = paidStatsTransactions.filter(
+  const today = appToday();
+  const monthStats = statsTransactions.filter(
     (transaction) =>
-      transaction.date.startsWith(monthKey) &&
+      transaction.date.startsWith(today.slice(0, 7)) &&
       inAccount(transaction) &&
       !isOpeningBalance(transaction)
   );
+  // Realized = paid and not in the future; the rest of the month (future
+  // installments, unpaid bills) is the forecast shown under "Gasto no mês".
+  const isRealized = (tx: { paid: boolean; date: string }) =>
+    tx.paid && tx.date <= today;
+  const monthTransactions = monthStats.filter(isRealized);
+  const monthForecastExpend = monthStats
+    .filter((tx) => tx.type === "expend" && !isRealized(tx))
+    .reduce((total, tx) => total + tx.amount, 0);
   const paidTransactions = transactions.filter((tx) => tx.paid);
   // "Todas as contas" = sum of the accounts that count toward the total.
   const balance = accountId
@@ -101,6 +125,28 @@ function Dashboard() {
           (total, account) => total + prepaidBalanceOf(account.id, paidTransactions),
           0,
         );
+  // Postpaid cards hold debt, not money — they stay out of the per-account chart.
+  const accountBalances = accounts
+    .filter((account) => account.kind !== "credit_card" || account.prepaid)
+    .map((account) => ({
+      name: account.name,
+      balance: prepaidBalanceOf(account.id, paidTransactions),
+    }))
+    .filter((row) => row.balance !== 0)
+    .sort((a, b) => b.balance - a.balance);
+  // Mini chart fits ~6 bars; the tail folds into "Outras" instead of cramming.
+  const chartBalances =
+    accountBalances.length > 6
+      ? [
+          ...accountBalances.slice(0, 5),
+          {
+            name: "Outras",
+            balance: accountBalances
+              .slice(5)
+              .reduce((total, row) => total + row.balance, 0),
+          },
+        ]
+      : accountBalances;
   const sumByType = (type: "earn" | "expend") =>
     monthTransactions
       .filter((transaction) => transaction.type === type)
@@ -283,48 +329,120 @@ function Dashboard() {
           />
         </div>
       </div>
-      <Card className="mb-6">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <CardTitle className="text-sm text-muted-foreground">
-            {accountId ? "Saldo da conta" : "Saldo total"}
-          </CardTitle>
-          <Select
-            value={accountId || EMPTY_SELECT_VALUE}
-            onValueChange={(value) =>
-              setAccountId(value === EMPTY_SELECT_VALUE ? "" : value)
-            }
-          >
-            <SelectTrigger className="w-auto min-w-44" aria-label="Conta">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={EMPTY_SELECT_VALUE}>Todas as contas</SelectItem>
-              {accounts.map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardHeader>
-        <CardContent>
-          <p className="text-4xl font-bold sm:text-5xl">
-            {displayMoney(balance)}
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button asChild>
-              <Link to="/transactions">
-                Gerenciar transações <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link to="/report">
-                <BarChart3 className="size-4" /> Ver relatórios
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="mb-6 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-sm text-muted-foreground">
+              {accountId ? "Saldo da conta" : "Saldo total"}
+            </CardTitle>
+            <Select
+              value={accountId || EMPTY_SELECT_VALUE}
+              onValueChange={(value) =>
+                setAccountId(value === EMPTY_SELECT_VALUE ? "" : value)
+              }
+            >
+              <SelectTrigger className="w-auto min-w-44" aria-label="Conta">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY_SELECT_VALUE}>Todas as contas</SelectItem>
+                {accounts.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-bold sm:text-5xl">
+              {displayMoney(balance)}
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button asChild>
+                <Link to="/transactions">
+                  Gerenciar transações <ArrowRight className="size-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/report">
+                  <BarChart3 className="size-4" /> Ver relatórios
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+        {!accountId && accountBalances.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm text-muted-foreground">
+                Saldo por conta
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart
+                  data={chartBalances}
+                  margin={{ top: 16, right: 0, bottom: 0, left: 0 }}
+                >
+                  <XAxis
+                    dataKey="name"
+                    {...AXIS_PROPS}
+                    axisLine={false}
+                    interval={0}
+                    tick={{ ...AXIS_PROPS.tick, fontSize: 10 }}
+                    // Full name stays in the tooltip.
+                    tickFormatter={(name: string) =>
+                      name.length > 8 ? `${name.slice(0, 7)}…` : name
+                    }
+                  />
+                  {/* ponytail: mini chart — values ride on the bars, no Y axis */}
+                  <YAxis hide />
+                  <ReferenceLine y={0} stroke="var(--chart-axis)" />
+                  <Tooltip
+                    cursor={{ fill: "var(--chart-grid)", fillOpacity: 0.5 }}
+                    content={(props) => (
+                      <ChartTooltip
+                        label={props.label}
+                        payload={props.payload as never}
+                        format={displayMoney}
+                      />
+                    )}
+                  />
+                  <Bar
+                    dataKey="balance"
+                    name="Saldo"
+                    fill={CHART_IN}
+                    maxBarSize={28}
+                    // Labels vanish mid-animation on resize; static bars keep them.
+                    isAnimationActive={false}
+                  >
+                    {chartBalances.map((row) => (
+                      <Cell
+                        key={row.name}
+                        fill={row.name === "Outras" ? CHART_OTHER : CHART_IN}
+                      />
+                    ))}
+                    <LabelList
+                      dataKey="balance"
+                      position="top"
+                      formatter={(cents) =>
+                        showValues
+                          ? (Number(cents) / 100).toLocaleString("pt-BR", {
+                              notation: "compact",
+                              maximumFractionDigits: 1,
+                            })
+                          : "•••"
+                      }
+                      style={{ ...AXIS_PROPS.tick, fontSize: 10 }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+      </div>
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Receitas do mês"
@@ -333,6 +451,11 @@ function Dashboard() {
         <StatTile
           label="Gasto no mês"
           value={displayMoney(monthExpend)}
+          hint={
+            monthForecastExpend
+              ? `+ ${displayMoney(monthForecastExpend)} previsto`
+              : undefined
+          }
         />
         <StatTile
           label="Resultado do mês"
