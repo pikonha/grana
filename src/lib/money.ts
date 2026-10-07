@@ -54,6 +54,11 @@ export function balanceOf(
   return rows.reduce((acc, r) => acc + signedAmount(r.type, r.amount), 0)
 }
 
+/** Counts toward "Todas as contas": the user's checkbox, but a postpaid credit card never does (its balance is debt). */
+export function countsInTotal(a: { includeInTotal: boolean; kind: 'credit_card' | 'bank_account'; prepaid: boolean }): boolean {
+  return a.includeInTotal && (a.kind !== 'credit_card' || a.prepaid)
+}
+
 /** Prepaid card balance: earns + incoming transfers − expends − outgoing transfers, for one account. */
 export function prepaidBalanceOf(
   accountId: string,

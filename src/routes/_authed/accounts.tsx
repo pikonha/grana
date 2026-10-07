@@ -18,7 +18,7 @@ import type { UpdateAccountInput } from "#/server/schemas";
 import { appToday } from "#/lib/dates";
 import { pluggyFloor } from "#/lib/pluggy-sync";
 import { availableLimit } from "#/lib/faturas";
-import { prepaidBalanceOf } from "#/lib/money";
+import { countsInTotal, prepaidBalanceOf } from "#/lib/money";
 import {
   financeQueryKeys,
   optimisticAccount,
@@ -651,7 +651,9 @@ function Accounts() {
                 >
                   <Checkbox
                     id={`include-total-${a.id}`}
-                    checked={a.includeInTotal}
+                    checked={countsInTotal(a)}
+                    disabled={a.kind === "credit_card" && !a.prepaid}
+                    title={a.kind === "credit_card" && !a.prepaid ? "Cartão de crédito não entra no saldo" : undefined}
                     onChange={(e) =>
                       toggleTotal.mutate({
                         id: a.id,

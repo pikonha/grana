@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balanceOf, isOpeningBalance, isPaymentTrackable, paidByDate, prepaidBalanceOf, savingsRate, signedAmount } from './money'
+import { balanceOf, countsInTotal, isOpeningBalance, isPaymentTrackable, paidByDate, prepaidBalanceOf, savingsRate, signedAmount } from './money'
 
 describe('balanceOf', () => {
   it('sums paid transactions only when filtered', () => {
@@ -92,5 +92,14 @@ describe('opening balance + savings rate', () => {
     expect(savingsRate(10000, 7500)).toBe(0.25)
     expect(savingsRate(10000, 12000)).toBe(-0.2)
     expect(savingsRate(0, 500)).toBeNull()
+  })
+})
+
+describe('countsInTotal', () => {
+  it('follows the checkbox, but a postpaid card never counts', () => {
+    expect(countsInTotal({ includeInTotal: true, kind: 'bank_account', prepaid: false })).toBe(true)
+    expect(countsInTotal({ includeInTotal: false, kind: 'bank_account', prepaid: false })).toBe(false)
+    expect(countsInTotal({ includeInTotal: true, kind: 'credit_card', prepaid: true })).toBe(true)
+    expect(countsInTotal({ includeInTotal: true, kind: 'credit_card', prepaid: false })).toBe(false)
   })
 })
