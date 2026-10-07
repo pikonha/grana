@@ -1,7 +1,7 @@
 import { and, between, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account, transaction, type Account } from '#/db/schema'
-import { CHAINS, dateOf, externalIdOf, parseSpendLog, parseTransferItem, planSync, STABLECOINS, type LogMeta, type RawLog, type SpendLog, type SyncKind, type SyncPlan, type TokenTransfer, type TransferItem } from '#/lib/chain-sync'
+import { CHAINS, dateOf, externalIdOf, parseSpendLog, parseTransferItem, parseTransferLog, planSync, STABLECOINS, type LogMeta, type RawLog, type SpendLog, type SyncKind, type SyncPlan, type TokenTransfer, type TransferItem } from '#/lib/chain-sync'
 import { addDays } from '#/lib/dates'
 import { listPluggyAccountsCore, RECONNECT_ERROR, syncPluggyAccount } from './pluggy-sync.core'
 import { pluggyEnabled } from './pluggy-config'
@@ -16,11 +16,22 @@ import type { PluggyWebhookEvent } from './pluggy-webhook'
  * topic on USDC takes ~40s); Spends from the Etherscan-compatible `getLogs` on the
  * emitter. Without BLOCKSCOUT_API_KEY it falls back to the keyless public instances,
  * which allow only ~10 RPC requests per ~hour — local dev only.
+ *
+ * Base reads a public JSON-RPC node instead: Blockscout PRO's free plan refuses Base (402,
+ * "featured chain"), the keyless base.blockscout.com sits behind a Cloudflare challenge
+ * (403), and Etherscan V2's free tier refuses Base.
  */
 const INSTANCES: Record<number, string> = {
-  8453: 'https://base.blockscout.com',
   10: 'https://explorer.optimism.io',
 }
+// ponytail: Base's public node caps eth_getLogs at 500 blocks (~17 min): a 30-min run is ~4 calls,
+// a day of catch-up ~2.5 min, but a months-long backfill runs for hours. Move to a keyed RPC with a
+// wider range (Alchemy, Envio HyperRPC, …) if a backfill is needed. Keyless alternatives tested
+// 2026-10: drpc/1rpc/blast/tenderly cap at 10–1000 blocks, publicnode/ankr need a token.
+const NODES: Record<number, { url: string; range: number }> = {
+  8453: { url: 'https://mainnet.base.org', range: 500 },
+}
+const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 const CASH_EVENT_EMITTER_OP = '0x380b2e96799405be6e3d965f4044099891881acb'
 /** keccak256('Spend(address,bytes32,uint8,address[],uint256[],uint256[],uint256,uint8)') */
 const SPEND_TOPIC = '0x244f4cc0665ad7ee4709aa59b30d3ea581cecde1b0430a3f23a5dc609d4890fc'
@@ -32,7 +43,7 @@ const PAGE = 1000
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Tries `urls` in order, moving on only on 402: the PRO free plan refuses "featured" chains (Base, since 2026-10). */
+/** Tries `urls` in order, moving on only on 402: the PRO free plan refuses "featured" chains. */
 async function getJson(chainId: number, what: string, urls: string[]) {
   // ponytail: fixed pacing + one retry on 429 keeps us under the free rate limit.
   let res: Response | undefined
@@ -103,10 +114,57 @@ async function tokenTransfers(chainId: number, address: string, token: string, f
 }
 
 const topicOf = (address: string) => `0x${address.slice(2).toLowerCase().padStart(64, '0')}`
+const hex = (n: number) => `0x${n.toString(16)}`
+
+/** JSON-RPC call to the chain's public node (`NODES`). */
+async function nodeRpc(chainId: number, method: string, params: unknown[]) {
+  let res: Response
+  for (let attempt = 0; ; attempt++) {
+    await sleep(attempt ? 2_000 : 250)
+    res = await fetch(NODES[chainId].url, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(30_000),
+    })
+    if (res.status !== 429 || attempt) break
+  }
+  const body = await res.json().catch(() => null) as { result?: unknown; error?: { message: string } } | null
+  if (!res.ok || !body || body.error) throw new Error(`rpc ${chainId} ${method}: ${body?.error?.message ?? `HTTP ${res.status}`}`)
+  return body.result
+}
+
+/** Head block and the first block to read for `syncSince`, from the chain's node. */
+async function nodeWindow(chainId: number, syncSince: string) {
+  const block = await nodeRpc(chainId, 'eth_getBlockByNumber', ['latest', false]) as { number: string; timestamp: string }
+  const [head, headTs] = [Number(block.number), Number(block.timestamp)]
+  // ponytail: Base's fixed 2 s block time, 1 h early; planSync drops anything before syncSince.
+  const start = Math.max(0, head - Math.ceil((headTs - Date.parse(`${syncSince}T00:00:00Z`) / 1000) / 2) - 1800)
+  return { head, start }
+}
+
+/** Stablecoin `Transfer` logs from/to `address` in [fromBlock, toBlock], read from the chain's node. */
+async function nodeTransfers(chainId: number, address: string, fromBlock: number, toBlock: number) {
+  const { range } = NODES[chainId]
+  const byId = new Map<string, TokenTransfer>()
+  for (let start = fromBlock; start <= toBlock; start += range) {
+    const end = Math.min(start + range - 1, toBlock)
+    // Topic positions AND together, so from and to are two queries.
+    for (const topics of [[TRANSFER_TOPIC, topicOf(address)], [TRANSFER_TOPIC, null, topicOf(address)]]) {
+      const logs = await nodeRpc(chainId, 'eth_getLogs', [{ fromBlock: hex(start), toBlock: hex(end), address: STABLECOINS[chainId], topics }])
+      if (!Array.isArray(logs)) throw new Error(`rpc ${chainId}: malformed getLogs response`)
+      for (const log of logs as (RawLog & { address: string; blockTimestamp?: string })[]) {
+        if (!log.blockTimestamp) throw new Error(`rpc ${chainId}: log without blockTimestamp`)
+        const t = parseTransferLog(chainId, { ...log, timeStamp: log.blockTimestamp })
+        byId.set(externalIdOf(t), t) // a self-transfer matches both queries
+      }
+    }
+  }
+  return [...byId.values()]
+}
 
 async function fetchChain(chainId: number, kind: SyncKind, address: string, fromBlock: number, toBlock: number) {
   const transfers: TokenTransfer[] = [], spends: SpendLog[] = []
-  for (const token of STABLECOINS[chainId]) transfers.push(...await tokenTransfers(chainId, address, token, fromBlock, toBlock))
+  if (NODES[chainId]) transfers.push(...await nodeTransfers(chainId, address, fromBlock, toBlock))
+  else for (const token of STABLECOINS[chainId]) transfers.push(...await tokenTransfers(chainId, address, token, fromBlock, toBlock))
   // The emitter lives on OP only.
   if (kind === 'etherfi_cash' && chainId === 10) {
     const logs = await getLogs(chainId, fromBlock, toBlock, { address: CASH_EVENT_EMITTER_OP, topic0: SPEND_TOPIC, topic0_1_opr: 'and', topic1: topicOf(address) })
@@ -136,11 +194,13 @@ async function syncAccount(acc: Account, linked: Account[]) {
   const cursor = { ...acc.syncCursor }
   const transfers: TokenTransfer[] = [], spends: SpendLog[] = []
   for (const chainId of CHAINS[syncKind]) {
-    const head = Number(await rpc(chainId, { module: 'block', action: 'eth_block_number' }))
+    const node = NODES[chainId] ? await nodeWindow(chainId, syncSince) : null
+    const head = node ? node.head : Number(await rpc(chainId, { module: 'block', action: 'eth_block_number' }))
     if (!Number.isSafeInteger(head)) throw new Error(`explorer ${chainId}: malformed block number`)
     const toBlock = head - CONFIRMATIONS
     const fromBlock = cursor[chainId] != null
       ? cursor[chainId] + 1
+      : node ? node.start
       : Number((await rpc(chainId, { module: 'block', action: 'getblocknobytime', timestamp: String(Date.parse(`${syncSince}T00:00:00Z`) / 1000), closest: 'before' })).blockNumber)
     if (!Number.isSafeInteger(fromBlock)) throw new Error(`explorer ${chainId}: malformed start block`)
     if (fromBlock <= toBlock) {

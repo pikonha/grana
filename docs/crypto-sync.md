@@ -38,8 +38,9 @@ flowchart LR
 ## Per account
 
 1. For each chain: read the head, then set `toBlock = head − 150`, which leaves the indexer about 5 minutes. `fromBlock` is `cursor + 1`, or the block at `sync_since` on the first run.
-2. Fetch from Blockscout:
-   - Stablecoin transfers come from REST `/api/v2/addresses/{addr}/token-transfers?token=…`. The endpoint is indexed by address, returns `log_index`, and pages from newest to oldest down to `fromBlock`, capped at 40 pages.
+2. Fetch the events:
+   - Base: stablecoin `Transfer` logs come from the public node `mainnet.base.org` via `eth_getLogs` (from and to the address, in 500-block chunks; the log's `blockTimestamp` dates it). With no cursor, `fromBlock` is estimated from Base's fixed 2 s block time, 1 h early; `planSync` drops anything before `sync_since`. A backfill of months is thousands of calls and takes hours.
+   - OP, from Blockscout: stablecoin transfers come from REST `/api/v2/addresses/{addr}/token-transfers?token=…`. The endpoint is indexed by address, returns `log_index`, and pages from newest to oldest down to `fromBlock`, capped at 40 pages.
    - `Spend` logs come from `getLogs` on the `CashEventEmitter` (`0x380b2e96799405be6e3d965f4044099891881acb`) with `topic1 = safe`.
 3. Drop events whose `external_id` already exists. Re-reads are then idempotent and can never claim a second row.
 4. Fetch the BCB PTAX (venda) for the event dates.
@@ -95,7 +96,7 @@ The closest amount wins, then the closest date. A match gets `external_id` and `
 
 ## Configuration
 
-- `BLOCKSCOUT_API_KEY`: a free Blockscout PRO key from dev.blockscout.com (5 req/s, 100k credits/day). It covers OP; Base now needs a paid plan (HTTP 402), so Base calls fall back to the keyless `base.blockscout.com`.
+- `BLOCKSCOUT_API_KEY`: a free Blockscout PRO key from dev.blockscout.com (5 req/s, 100k credits/day). It covers OP only. Base needs a paid plan (HTTP 402) and the keyless `base.blockscout.com` is behind a Cloudflare challenge (HTTP 403), so Base reads the public node instead (no key).
   - Without it, sync falls back to the keyless public explorers, which allow about 10 RPC requests per hour. That is for local dev only.
   - Etherscan V2 is not an option on the free tier, which refuses Base and OP.
 - In the UI (Contas → Sincronização cripto): wallet address, origin (Carteira (Base) / ether.fi Cash (OP)), start date, and the automatic sync toggle.
@@ -106,6 +107,7 @@ The closest amount wins, then the closest date. A match gets `external_id` and `
 |---|---|
 | `explorer <chain> …: HTTP 401/402` | Missing or invalid `BLOCKSCOUT_API_KEY` |
 | `… HTTP 429` | Rate limited; next slot retries |
+| `rpc 8453 …` | Base public node error (range cap, rate limit, outage); next slot retries |
 | `over 40 pages of … transfers` | Address too busy for one run; pick a later start date |
 | `No PTAX rate on or before …` | BCB returned nothing for 10 days before the date |
 | `The operation was aborted due to timeout` | Explorer slower than 30 s (seen on Base USDT scans of empty addresses) |

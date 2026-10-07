@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSpendLog, parseTransferItem, planSync, usdCentsOf, type PlanInput } from './chain-sync'
+import { parseSpendLog, parseTransferItem, parseTransferLog, planSync, usdCentsOf, type PlanInput } from './chain-sync'
 
 const SAFE = '0x1111111111111111111111111111111111111111'
 const ETHERFI = '0x2222222222222222222222222222222222222222'
@@ -233,6 +233,24 @@ describe('log parsing', () => {
     })
     expect(spend).toMatchObject({ safe: '0xf6f1c73f7ea024c53a82eee06bbf517631e8b8ac', totalUsdAmt: '694480000', logIndex: 149, blockNumber: 157309926 })
     expect(usdCentsOf(spend.totalUsdAmt)).toBe(69448)
+  })
+
+  it('decodes a real ERC20 Transfer log (Base USDC, JSON-RPC)', () => {
+    const t = parseTransferLog(8453, {
+      address: '0x833589FCD6eDb6E08f4c7C32D4f71b54bdA02913', blockNumber: '0x31dd000', timeStamp: '0x6ac5fce3', logIndex: '0x0',
+      transactionHash: '0xf7498d1f30942ef08ddd19c86dc7dcadeeb40ef9c0f7c5be3a870cf5785defba',
+      topics: [
+        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+        '0x000000000000000000000000565fe00e83c876740a3696bb46779c513af6916e',
+        '0x0000000000000000000000006867ef8c1904a10e31d856ebbc5d6acf91dbe48a',
+      ],
+      data: '0x000000000000000000000000000000000000000000000000000000000dfdad27',
+    })
+    expect(t).toEqual({
+      chainId: 8453, hash: '0xf7498d1f30942ef08ddd19c86dc7dcadeeb40ef9c0f7c5be3a870cf5785defba', logIndex: 0, blockNumber: 52285440, timeStamp: 0x6ac5fce3,
+      from: '0x565fe00e83c876740a3696bb46779c513af6916e', to: '0x6867ef8c1904a10e31d856ebbc5d6acf91dbe48a',
+      contractAddress: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', value: '234728743',
+    })
   })
 
   it('decodes a Blockscout token-transfers item', () => {

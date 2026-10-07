@@ -90,6 +90,11 @@ export const parseTransferItem = (chainId: number, token: string, item: Transfer
   from: item.from.hash.toLowerCase(), to: item.to.hash.toLowerCase(), contractAddress: token.toLowerCase(), value: BigInt(item.total.value).toString(),
 })
 
+/** An ERC20 `Transfer(address indexed from, address indexed to, uint256 value)` log. */
+export const parseTransferLog = (chainId: number, log: RawLog & { address: string }): TokenTransfer => ({
+  ...logMeta(chainId, log), from: addressOf(log.topics[1]), to: addressOf(log.topics[2]), contractAddress: log.address.toLowerCase(), value: BigInt(log.data).toString(),
+})
+
 /** ether.fi `Spend(address indexed safe, …)`; data words: tokens, amounts, amountInUsd offsets, then totalUsdAmt, mode. */
 export const parseSpendLog = (chainId: number, log: RawLog): SpendLog & { safe: string } => ({
   ...logMeta(chainId, log), safe: addressOf(log.topics[1]), totalUsdAmt: BigInt(`0x${log.data.slice(2 + 64 * 3, 2 + 64 * 4)}`).toString(),
