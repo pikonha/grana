@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availableLimit, cycleKeyFor, faturaLabel, faturaStatus, vencimentoFor } from './faturas'
+import { availableLimit, cycleKeyFor, cycleTotals, faturaLabel, faturaStatus, vencimentoFor } from './faturas'
 
 describe('cycleKeyFor', () => {
   it('on-the-day expense belongs to the next cycle', () => expect(cycleKeyFor('2026-07-10', 10)).toBe('2026-07-10'))
@@ -25,5 +25,17 @@ describe('availableLimit', () => {
       { total: 500, status: 'paid' as const },
     ]
     expect(availableLimit(10000, faturas)).toBe(7000)
+  })
+})
+
+describe('cycleTotals', () => {
+  it('a refund (earn on the card) reduces its cycle; transfers (payments) are ignored', () => {
+    const totals = cycleTotals([
+      { type: 'expend', amount: 10000, date: '2026-09-10' },
+      { type: 'earn', amount: 2500, date: '2026-09-20' },
+      { type: 'transfer', amount: 10000, date: '2026-09-25' },
+      { type: 'expend', amount: 3000, date: '2026-10-02' },
+    ], 1)
+    expect(Object.fromEntries(totals)).toEqual({ '2026-09-01': 7500, '2026-10-01': 3000 })
   })
 })

@@ -97,7 +97,7 @@ export function planPluggy(input: PluggyInput): PluggyPlan {
       }
       continue
     }
-    // ponytail: a refund lands as `earn` and does not reduce the fatura total (it sums `expend` only).
+    // A refund lands as `earn` on the card, which reduces that cycle's fatura total.
     const inflow = card ? tx.amount < 0 : tx.amount > 0
 
     const meta = tx.creditCardMetadata

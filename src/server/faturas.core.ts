@@ -1,8 +1,8 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '#/db/index'
 import { account, faturaPayment, transaction } from '#/db/schema'
 import { appToday } from '#/lib/dates'
-import { cycleKeyFor, faturaLabel, faturaStatus, nextCycleKey, vencimentoFor } from '#/lib/faturas'
+import { cycleKeyFor, cycleTotals, faturaLabel, faturaStatus, nextCycleKey, vencimentoFor } from '#/lib/faturas'
 import type { FaturaPaymentInput } from './schemas'
 
 export type FaturaRow = Awaited<ReturnType<typeof listFaturasCore>>[number]
@@ -11,16 +11,12 @@ export async function listFaturasCore(userId: string, today: string) {
   const cards = await db.select().from(account).where(
     and(eq(account.userId, userId), eq(account.kind, 'credit_card'), eq(account.prepaid, false)),
   )
-  const txs = await db.select().from(transaction).where(and(eq(transaction.userId, userId), eq(transaction.type, 'expend')))
+  const txs = await db.select().from(transaction).where(and(eq(transaction.userId, userId), inArray(transaction.type, ['expend', 'earn'])))
   const payments = await db.select().from(faturaPayment).where(eq(faturaPayment.userId, userId))
 
   return cards.flatMap((card) => {
     const cardTxs = txs.filter((t) => t.accountId === card.id)
-    const totals = new Map<string, number>()
-    for (const t of cardTxs) {
-      const key = cycleKeyFor(t.date, card.closingDay!)
-      totals.set(key, (totals.get(key) ?? 0) + t.amount)
-    }
+    const totals = cycleTotals(cardTxs, card.closingDay!)
     const currentCycleKey = cycleKeyFor(today, card.closingDay!)
     totals.set(currentCycleKey, totals.get(currentCycleKey) ?? 0)
     const populatedKeys = [...totals.keys()].sort()
