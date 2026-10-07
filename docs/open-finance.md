@@ -25,10 +25,10 @@ Meu Pluggy items fire webhooks like any item; the page-open and button triggers 
 - Reads `from = max(sync_since, today − 30 d)` to open-ended (future `PENDING` installments). No cursor: the window is re-read each time and `UNIQUE(user_id, external_id)` makes it idempotent.
 - Transactions come from `GET /v2/transactions` (cursor); the page-based `GET /transactions` answers 410.
 - Bank account: inflow → `earn`, outflow → `expend`; a card-payment outflow (category *Credit card payment* or description *Pagamento de fatura*, since Nubank and XP categorize it as *Transfers*) → `transfer` to the card (credit of the same amount within ±3 days, else the card of the same item, else a plain `expend`).
-- Card: charge → `expend`; installments claim (or create) an installment plan; a payment credit marks the closest closed fatura paid (no transaction); other credits → `earn`.
+- Card: charge → `expend`; installments claim (or create) an installment plan; a payment credit marks the closest closed fatura paid (no transaction); other credits (refunds) → `earn`, which reduces the fatura total.
 - Rows whose Pluggy id was recreated are re-pointed instead of duplicated.
 - Each account applies in one DB transaction; errors land in `last_sync_error`. A broken connection shows *Reconecte no Meu Pluggy*.
 
 ## Limits
 
-Meu Pluggy refreshes about once a day and its items refuse `PATCH`, so nothing here makes data fresher. Partial fatura payments mark the fatura paid; refunds do not reduce the fatura total; rows Pluggy deletes for good stay in grana.
+Meu Pluggy refreshes about once a day and its items refuse `PATCH`, so nothing here makes data fresher. Partial fatura payments mark the fatura paid; rows Pluggy deletes for good stay in grana.

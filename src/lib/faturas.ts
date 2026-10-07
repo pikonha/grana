@@ -9,6 +9,17 @@ export function cycleKeyFor(date: string, closingDay: number): string {
   return d >= closingDay ? closingThisMonth : addMonths(closingThisMonth, -1)
 }
 
+/** Fatura total per cycle key. A credit on the card (`earn`: refund/estorno) reduces it; payments are transfers and stay out. */
+export function cycleTotals(txs: Array<{ type: string; amount: number; date: string }>, closingDay: number): Map<string, number> {
+  const totals = new Map<string, number>()
+  for (const t of txs) {
+    if (t.type !== 'expend' && t.type !== 'earn') continue
+    const key = cycleKeyFor(t.date, closingDay)
+    totals.set(key, (totals.get(key) ?? 0) + (t.type === 'earn' ? -t.amount : t.amount))
+  }
+  return totals
+}
+
 export function nextCycleKey(cycleKey: string): string {
   return addMonths(cycleKey, 1)
 }

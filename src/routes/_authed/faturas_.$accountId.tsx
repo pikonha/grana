@@ -91,7 +91,7 @@ function FaturaDetail() {
   const expenses = selected
     ? transactions.filter(
         (transaction) =>
-          transaction.type === "expend" &&
+          (transaction.type === "expend" || transaction.type === "earn") &&
           transaction.accountId === accountId &&
           cycleKeyFor(transaction.date, selected.closingDay) ===
             selected.cycleKey
@@ -300,7 +300,10 @@ function FaturaDetail() {
                 <TableRow key={expense.id}>
                   <TableCell>{expense.date}</TableCell>
                   <TableCell>{expense.note || "—"}</TableCell>
-                  <TableCell className="text-destructive">−{money(expense.amount)}</TableCell>
+                  <TableCell className={expense.type === "earn" ? "text-emerald-600" : "text-destructive"}>
+                    {expense.type === "earn" ? "+" : "−"}
+                    {money(expense.amount)}
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {expense.tags.map((tag) => (
