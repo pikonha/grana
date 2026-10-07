@@ -134,6 +134,13 @@ describe('planPluggy — credit card', () => {
     })
   })
 
+  it('starts the plan at purchaseDate when Pluggy has it (Nubank dates installments by bill)', () => {
+    // Purchase Sep 13 (20:01 in São Paulo); 2/3 posted Oct 1: date − 1 month would give Sep 1.
+    const p2 = parcela(2, { date: '2026-10-01T00:00:00.000Z', creditCardMetadata: { installmentNumber: 2, totalInstallments: 3, purchaseDate: '2026-09-13T23:01:54.001Z' } })
+    const plans = [{ id: 'plan', count: 3, startDate: '2026-09-14', rows: [{ id: 'r0', externalId: null }, { id: 'r1', externalId: null }, { id: 'r2', externalId: null }] }]
+    expect(planPluggy(card({ txs: [p2], plans }))).toEqual({ ...empty, claims: [{ id: 'r1', externalId: 'pluggy:p2' }] })
+  })
+
   it('total falls back to amount × N when Pluggy has no totalAmount', () => {
     const plan = planPluggy(card({ txs: [parcela(1, { creditCardMetadata: { installmentNumber: 1, totalInstallments: 4 } })] }))
     expect(plan.newPlans[0]).toMatchObject({ count: 4, totalAmount: 40000 })
