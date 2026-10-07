@@ -18,7 +18,7 @@ import type {
 } from "#/server/schemas";
 import type { Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
-import { countsInTotal, isOpeningBalance, prepaidBalanceOf, savingsRate } from "#/lib/money";
+import { countsInTotal, isOpeningBalance, prepaidBalanceOf, savingsRate, totalBalanceOf } from "#/lib/money";
 import { appToday } from "#/lib/dates";
 import {
   financeQueryKeys,
@@ -28,24 +28,7 @@ import {
   optimisticTransaction,
   optimisticTransfer,
 } from "#/lib/optimistic";
-import {
-  Bar,
-  BarChart,
-  Cell,
-  LabelList,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  AXIS_PROPS,
-  CHART_IN,
-  CHART_OTHER,
-  ChartTooltip,
-  StatTile,
-} from "@/components/charts";
+import { StatTile } from "@/components/charts";
 import { ImportCsvModal } from "@/components/ImportCsvModal";
 import { TransactionModal } from "@/components/TransactionModal";
 import { TransferModal } from "@/components/TransferModal";
@@ -116,18 +99,12 @@ function Dashboard() {
     .filter((tx) => tx.type === "expend" && !isRealized(tx))
     .reduce((total, tx) => total + tx.amount, 0);
   const paidTransactions = transactions.filter((tx) => tx.paid);
-  // "Todas as contas" = sum of the accounts that count toward the total.
   const balance = accountId
     ? prepaidBalanceOf(accountId, transactions)
-    : accounts
-        .filter(countsInTotal)
-        .reduce(
-          (total, account) => total + prepaidBalanceOf(account.id, paidTransactions),
-          0,
-        );
-  // Postpaid cards hold debt, not money — they stay out of the per-account chart.
+    : totalBalanceOf(accounts, transactions);
+  // Same accounts as "Todas as contas", so the bars add up to the total.
   const accountBalances = accounts
-    .filter((account) => account.kind !== "credit_card" || account.prepaid)
+    .filter(countsInTotal)
     .map((account) => ({
       name: account.name,
       balance: prepaidBalanceOf(account.id, paidTransactions),
@@ -329,7 +306,7 @@ function Dashboard() {
           />
         </div>
       </div>
-      <div className="mb-6 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         <Card>
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
             <CardTitle className="text-sm text-muted-foreground">
@@ -380,65 +357,7 @@ function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={140}>
-                <BarChart
-                  data={chartBalances}
-                  margin={{ top: 16, right: 0, bottom: 0, left: 0 }}
-                >
-                  <XAxis
-                    dataKey="name"
-                    {...AXIS_PROPS}
-                    axisLine={false}
-                    interval={0}
-                    tick={{ ...AXIS_PROPS.tick, fontSize: 10 }}
-                    // Full name stays in the tooltip.
-                    tickFormatter={(name: string) =>
-                      name.length > 8 ? `${name.slice(0, 7)}…` : name
-                    }
-                  />
-                  {/* ponytail: mini chart — values ride on the bars, no Y axis */}
-                  <YAxis hide />
-                  <ReferenceLine y={0} stroke="var(--chart-axis)" />
-                  <Tooltip
-                    cursor={{ fill: "var(--chart-grid)", fillOpacity: 0.5 }}
-                    content={(props) => (
-                      <ChartTooltip
-                        label={props.label}
-                        payload={props.payload as never}
-                        format={displayMoney}
-                      />
-                    )}
-                  />
-                  <Bar
-                    dataKey="balance"
-                    name="Saldo"
-                    fill={CHART_IN}
-                    maxBarSize={28}
-                    // Labels vanish mid-animation on resize; static bars keep them.
-                    isAnimationActive={false}
-                  >
-                    {chartBalances.map((row) => (
-                      <Cell
-                        key={row.name}
-                        fill={row.name === "Outras" ? CHART_OTHER : CHART_IN}
-                      />
-                    ))}
-                    <LabelList
-                      dataKey="balance"
-                      position="top"
-                      formatter={(cents) =>
-                        showValues
-                          ? (Number(cents) / 100).toLocaleString("pt-BR", {
-                              notation: "compact",
-                              maximumFractionDigits: 1,
-                            })
-                          : "•••"
-                      }
-                      style={{ ...AXIS_PROPS.tick, fontSize: 10 }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <AccountBars rows={chartBalances} showValues={showValues} />
             </CardContent>
           </Card>
         )}
@@ -513,5 +432,92 @@ function Dashboard() {
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+/**
+ * Mini column chart in the app's own vocabulary (bordered blocks, hard shadow)
+ * instead of recharts' thin marks. ponytail: plain divs, ~6 bars never need a
+ * chart lib; native title is the hover layer.
+ */
+function AccountBars({
+  rows,
+  showValues,
+}: {
+  rows: Array<{ name: string; balance: number }>;
+  showValues: boolean;
+}) {
+  const compact = (cents: number) =>
+    !showValues
+      ? "•••"
+      : (cents / 100).toLocaleString("pt-BR", {
+          notation: "compact",
+          maximumFractionDigits: 1,
+        });
+  const up = Math.max(0, ...rows.map((r) => r.balance));
+  const down = Math.max(0, ...rows.map((r) => -r.balance));
+  const zone = (cents: number, max: number) =>
+    `${max ? Math.max((cents / max) * 100, 2) : 0}%`;
+  const fill = (row: { name: string; balance: number }) =>
+    row.name === "Outras"
+      ? "bg-[var(--chart-other)]"
+      : row.balance < 0
+        ? "bg-destructive"
+        : "bg-primary";
+
+  return (
+    <div>
+      <div className={`flex h-36 pt-5 ${down ? "pb-5" : ""}`}>
+        {rows.map((row) => (
+          <div
+            key={row.name}
+            className="flex min-w-0 flex-1 flex-col"
+            // Bars inset with padding, not gap, so the baseline runs unbroken.
+            title={showValues ? `${row.name}: ${money(row.balance)}` : row.name}
+          >
+            <div
+              className="flex flex-col justify-end border-b-2 border-foreground px-1"
+              style={{ flex: up || 1 }}
+            >
+              {row.balance > 0 && (
+                <div
+                  className={`relative mx-auto w-full max-w-10 border-2 border-b-0 border-foreground ${fill(row)}`}
+                  style={{ height: zone(row.balance, up) }}
+                >
+                  <span className="absolute inset-x-[-8px] -top-5 text-center text-[11px] font-bold tabular-nums">
+                    {compact(row.balance)}
+                  </span>
+                </div>
+              )}
+            </div>
+            {down > 0 && (
+              <div className="flex flex-col px-1" style={{ flex: down }}>
+                {row.balance < 0 && (
+                  <div
+                    className={`relative mx-auto w-full max-w-10 border-2 border-t-0 border-foreground ${fill(row)}`}
+                    style={{ height: zone(-row.balance, down) }}
+                  >
+                    <span className="absolute inset-x-[-8px] -bottom-5 text-center text-[11px] font-bold tabular-nums">
+                      {compact(row.balance)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex">
+        {rows.map((row) => (
+          <span
+            key={row.name}
+            className="min-w-0 flex-1 truncate px-0.5 text-center text-[10px] font-bold uppercase text-muted-foreground"
+            title={row.name}
+          >
+            {row.name}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

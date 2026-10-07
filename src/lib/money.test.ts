@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balanceOf, countsInTotal, isOpeningBalance, isPaymentTrackable, paidByDate, prepaidBalanceOf, savingsRate, signedAmount } from './money'
+import { balanceOf, countsInTotal, totalBalanceOf, isOpeningBalance, isPaymentTrackable, paidByDate, prepaidBalanceOf, savingsRate, signedAmount } from './money'
 
 describe('balanceOf', () => {
   it('sums paid transactions only when filtered', () => {
@@ -101,5 +101,22 @@ describe('countsInTotal', () => {
     expect(countsInTotal({ includeInTotal: false, kind: 'bank_account', prepaid: false })).toBe(false)
     expect(countsInTotal({ includeInTotal: true, kind: 'credit_card', prepaid: true })).toBe(true)
     expect(countsInTotal({ includeInTotal: true, kind: 'credit_card', prepaid: false })).toBe(false)
+  })
+})
+
+describe('totalBalanceOf', () => {
+  it('sums paid rows of the accounts that count, transfers between them cancel', () => {
+    const accounts = [
+      { id: 'a', includeInTotal: true, kind: 'bank_account' as const, prepaid: false },
+      { id: 'b', includeInTotal: false, kind: 'bank_account' as const, prepaid: false },
+      { id: 'c', includeInTotal: true, kind: 'credit_card' as const, prepaid: false },
+    ]
+    const rows = [
+      { type: 'earn' as const, amount: 10000, accountId: 'a', counterAccountId: null, paid: true },
+      { type: 'earn' as const, amount: 500, accountId: 'a', counterAccountId: null, paid: false },
+      { type: 'transfer' as const, amount: 3000, accountId: 'a', counterAccountId: 'b', paid: true },
+      { type: 'expend' as const, amount: 2000, accountId: 'c', counterAccountId: null, paid: true },
+    ]
+    expect(totalBalanceOf(accounts, rows)).toBe(7000)
   })
 })

@@ -38,7 +38,7 @@ import {
   optimisticUpdatedTransaction,
   optimisticTransfer,
 } from "#/lib/optimistic";
-import { balanceOf, isPaymentTrackable, prepaidBalanceOf, signedAmount } from "#/lib/money";
+import { isPaymentTrackable, prepaidBalanceOf, signedAmount, totalBalanceOf } from "#/lib/money";
 import { localMonthKey, scheduledDatesInMonth } from "#/lib/recurrence";
 import { transferNote } from "#/lib/transaction-labels";
 import { CategorySelect } from "@/components/CategorySelect";
@@ -548,12 +548,7 @@ function Transactions() {
       : transactions;
   const balance = filterAccount
     ? prepaidBalanceOf(filterAccount, balanceRows)
-    : balanceOf(
-        balanceRows.filter(
-          (tx): tx is typeof tx & { type: "earn" | "expend" } =>
-            tx.type !== "transfer" && tx.paid,
-        ),
-      );
+    : totalBalanceOf(accounts, balanceRows);
   const displayMoney = (cents: number) =>
     showValues ? money(cents) : "••••••";
 

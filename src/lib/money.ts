@@ -73,6 +73,15 @@ export function prepaidBalanceOf(
   }, 0)
 }
 
+/** "Todas as contas": paid balance summed over the accounts that count toward the total. */
+export function totalBalanceOf(
+  accounts: Array<{ id: string } & Parameters<typeof countsInTotal>[0]>,
+  rows: Array<Parameters<typeof prepaidBalanceOf>[1][number] & { paid: boolean }>,
+): number {
+  const paid = rows.filter((r) => r.paid)
+  return accounts.filter(countsInTotal).reduce((total, a) => total + prepaidBalanceOf(a.id, paid), 0)
+}
+
 /** Seed for a new transaction's `paid`: anything not in the future counts as settled. */
 export function paidByDate(date: string, today: string): boolean {
   return date <= today
