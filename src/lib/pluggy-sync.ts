@@ -19,7 +19,7 @@ export type PluggyTx = {
   /** BRL. Bank: + inflow, − outflow. Card: + charge, − credit. */
   amount: number
   category: string | null
-  creditCardMetadata?: { installmentNumber?: number | null; totalInstallments?: number | null; totalAmount?: number | null } | null
+  creditCardMetadata?: { installmentNumber?: number | null; totalInstallments?: number | null; totalAmount?: number | null; purchaseDate?: string | null } | null
 }
 
 export type PluggyAccount = { id: string; kind: 'credit_card' | 'bank_account'; itemId: string; closingDay: number | null; dueDay: number | null }
@@ -103,7 +103,9 @@ export function planPluggy(input: PluggyInput): PluggyPlan {
     const meta = tx.creditCardMetadata
     if (card && !inflow && meta?.totalInstallments && meta.totalInstallments > 1) {
       const [n, k] = [meta.totalInstallments, meta.installmentNumber ?? 1]
-      const startDate = addMonths(date, -(k - 1))
+      // Nubank dates each installment by its bill (2/3 of a Sep 13 purchase lands on Oct 1), so
+      // date − (k−1) months drifts; the purchase date is the plan start.
+      const startDate = meta.purchaseDate ? whenOf(meta.purchaseDate).date : addMonths(date, -(k - 1))
       const near = (p: { count: number; startDate: string }) => p.count === n && daysBetween(p.startDate, startDate) <= 3
       const existingPlan = input.plans.find(near)
       if (existingPlan) {
