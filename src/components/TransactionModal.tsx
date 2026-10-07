@@ -34,7 +34,7 @@ type RepeatInterval =
   | "monthly"
   | "yearly"
   | "installments";
-type CategoryOption = { id: string; name: string; color: string };
+type CategoryOption = { id: string; name: string; color: string; kind: "earn" | "expend" };
 type AccountOption = { id: string; name: string; kind: string; prepaid?: boolean | null };
 type EditableTransaction = {
   id: string;
@@ -55,7 +55,7 @@ type TransactionModalProps = {
   initialTransaction?: EditableTransaction;
   onCreate?: (data: CreateTransactionInput) => Promise<unknown>;
   onUpdate?: (data: UpdateTransactionInput) => Promise<unknown>;
-  onCreateCategory: (name: string, color: string) => Promise<string>;
+  onCreateCategory: (name: string, color: string, kind: "earn" | "expend") => Promise<string>;
   onDeleteCategory?: CategorySelectProps["onDelete"];
   /** Editing a recurrence rule: no date (the schedule stays), applies to future occurrences. */
   recurring?: boolean;
@@ -107,7 +107,10 @@ export function TransactionModal({
     setDate(source?.date ?? today());
     // Postgres `time` reads back as HH:MM:SS.
     setTime(source?.time?.slice(0, 5) ?? "");
-    setTagIds(source?.tags.map((tag) => tag.id) ?? []);
+    // Earn and expend categories are separate; a tag of the other kind can't be kept.
+    const sourceType = source?.type ?? type;
+    setTagIds(source?.tags.map((tag) => tag.id).filter((id) =>
+      categories.some((category) => category.id === id && category.kind === sourceType)) ?? []);
     setAccountId(source?.accountId ?? "");
     setNote(source?.note ?? "");
     setRepeat("none");
@@ -247,9 +250,10 @@ export function TransactionModal({
                 <Select
                   value={transactionType}
                   disabled={installment}
-                  onValueChange={(value) =>
-                    setTransactionType(value as typeof transactionType)
-                  }
+                  onValueChange={(value) => {
+                    setTransactionType(value as typeof transactionType);
+                    setTagIds([]);
+                  }}
                 >
                   <SelectTrigger id="transaction-type">
                     <SelectValue />
@@ -315,12 +319,12 @@ export function TransactionModal({
               </Select>
             </Field>
             <div className="space-y-2">
-              <Label>Etiquetas</Label>
+              <Label>{transactionType === "earn" ? "Categorias de receita" : "Categorias de despesa"}</Label>
               <CategorySelect
-                categories={categories}
+                categories={categories.filter((category) => category.kind === transactionType)}
                 value={tagIds}
                 onChange={setTagIds}
-                onCreate={onCreateCategory}
+                onCreate={(name, color) => onCreateCategory(name, color, transactionType)}
                 onDelete={onDeleteCategory}
               />
             </div>

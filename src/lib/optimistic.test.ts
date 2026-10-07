@@ -63,6 +63,7 @@ describe("optimistic finance rows", () => {
       userId: "optimistic",
       name: "Food",
       color: "#2563eb",
+      kind: "expend",
     });
   });
 

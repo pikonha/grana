@@ -273,16 +273,16 @@ function Transactions() {
   const removeCategory = (id: string, replacementId?: string | null) =>
     deleteCategoryMutation.mutateAsync({ id, replacementId });
   const createCategoryMutation = useMutation({
-    mutationFn: (data: { name: string; color: string }) =>
+    mutationFn: (data: { name: string; color: string; kind: "earn" | "expend" }) =>
       createCategory({ data }),
-    onMutate: async ({ name, color }) => {
+    onMutate: async ({ name, color, kind }) => {
       await qc.cancelQueries({ queryKey: financeQueryKeys.categories });
       const previous = qc.getQueryData<Category[]>(financeQueryKeys.categories);
       const temporaryId = optimisticId();
       qc.setQueryData<Category[]>(
         financeQueryKeys.categories,
         (current = []) =>
-          [...current, optimisticCategory(name, temporaryId, color)].sort(
+          [...current, optimisticCategory(name, temporaryId, color, kind)].sort(
             (a, b) => a.name.localeCompare(b.name),
           ),
       );
@@ -630,7 +630,10 @@ function Transactions() {
             <Field label="Tipo">
               <Select
                 value={type}
-                onValueChange={(value) => setType(value as typeof type)}
+                onValueChange={(value) => {
+                  setType(value as typeof type);
+                  setTagIds([]);
+                }}
               >
                 <SelectTrigger aria-label="Tipo">
                   <SelectValue />
@@ -667,13 +670,13 @@ function Transactions() {
                 />
               </Field>
             )}
-            <Field label="Etiquetas">
+            <Field label={type === "earn" ? "Categorias de receita" : "Categorias de despesa"}>
               <CategorySelect
-                categories={categories}
+                categories={categories.filter((category) => category.kind === type)}
                 value={tagIds}
                 onChange={setTagIds}
                 onCreate={async (name, color) =>
-                  (await createCategoryMutation.mutateAsync({ name, color })).id
+                  (await createCategoryMutation.mutateAsync({ name, color, kind: type })).id
                 }
                 onDelete={removeCategory}
               />
@@ -940,11 +943,12 @@ function Transactions() {
                               categories={categories}
                               initialTransaction={{ ...row.tx, type: row.tx.type }}
                               onUpdate={(data) => update.mutateAsync(data)}
-                              onCreateCategory={async (name, color) =>
+                              onCreateCategory={async (name, color, kind) =>
                                 (
                                   await createCategoryMutation.mutateAsync({
                                     name,
                                     color,
+                                    kind,
                                   })
                                 ).id
                               }
@@ -973,8 +977,8 @@ function Transactions() {
                             onUpdate={({ id, type, amount, tag_ids, account_id, note }) =>
                               editRule.mutateAsync({ id, type, amount, tag_ids, account_id, note })
                             }
-                            onCreateCategory={async (name, color) =>
-                              (await createCategoryMutation.mutateAsync({ name, color })).id
+                            onCreateCategory={async (name, color, kind) =>
+                              (await createCategoryMutation.mutateAsync({ name, color, kind })).id
                             }
                             onDeleteCategory={removeCategory}
                             trigger={

@@ -31,7 +31,7 @@ HERMES_WEBHOOK_SECRET=...
 HERMES_USER_ID=better-auth-user-id-owned-by-hermes-writes
 ```
 
-`HERMES_USER_ID` is the Better Auth user ID assigned to external transaction writes. The webhook contract requires `account_id` (every transaction belongs to an account) and accepts optional `tag_ids`; legacy `category_id` is still accepted as one tag. `card_id` is no longer accepted.
+`HERMES_USER_ID` is the Better Auth user ID assigned to external transaction writes. The webhook contract requires `account_id` (every transaction belongs to an account) and accepts optional `tag_ids` (each tag's `kind` must match the transaction `type`: earn tags on earn, expend tags on expend); legacy `category_id` is still accepted as one tag. `card_id` is no longer accepted.
 
 ## Commands
 
@@ -61,4 +61,4 @@ Tools: `list_accounts`, `create_account`, `update_account`, `delete_account`, `s
 
 Set all five environment variables above; use the public app URL for `BETTER_AUTH_URL`. Apply the migration before deploying. The database migration is destructive versus the old single-user/card schema.
 
-No cron job is needed: recurrence rules are materialized lazily on `list_transactions` (idempotent, catches up missed days). Installments are allowed only for expense transactions on an owned credit-card account. Tags are colored rows attached through `transaction_tag`, so one transaction can carry multiple labels.
+No cron job is needed: recurrence rules are materialized lazily on `list_transactions` (idempotent, catches up missed days). Installments are allowed only for expense transactions on an owned credit-card account. Tags are colored rows attached through `transaction_tag`, so one transaction can carry multiple labels. Each tag has a `kind` (`earn` or `expend`): income and expense categories are separate sets.

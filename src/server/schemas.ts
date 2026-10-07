@@ -74,6 +74,8 @@ export type DeleteRecurrenceInput = z.infer<typeof deleteRecurrenceInput>
 export const categoryInput = z.object({
   name: z.string().trim().min(1).max(100),
   color: hexColor.default(DEFAULT_TAG_COLOR),
+  /** Earn and expend categories are separate: a tag only goes on transactions of its kind. */
+  kind: z.enum(['earn', 'expend']),
 })
 export const deleteTagInput = z.object({
   id: z.string().uuid(),

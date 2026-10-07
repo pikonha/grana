@@ -156,8 +156,8 @@ function Dashboard() {
   const removeCategory = (id: string, replacementId?: string | null) =>
     deleteCategoryMutation.mutateAsync({ id, replacementId });
   const createCategoryMutation = useMutation({
-    mutationFn: (data: { name: string; color: string }) => createCategory({ data }),
-    onMutate: async ({ name, color }) => {
+    mutationFn: (data: { name: string; color: string; kind: "earn" | "expend" }) => createCategory({ data }),
+    onMutate: async ({ name, color, kind }) => {
       await queryClient.cancelQueries({ queryKey: financeQueryKeys.categories });
       const previous = queryClient.getQueryData<Category[]>(
         financeQueryKeys.categories,
@@ -166,7 +166,7 @@ function Dashboard() {
       queryClient.setQueryData<Category[]>(
         financeQueryKeys.categories,
         (current = []) =>
-          [...current, optimisticCategory(name, temporaryId, color)].sort((a, b) =>
+          [...current, optimisticCategory(name, temporaryId, color, kind)].sort((a, b) =>
             a.name.localeCompare(b.name),
           ),
       );
@@ -253,8 +253,8 @@ function Dashboard() {
             accounts={accounts}
             categories={categories}
             onCreate={(data) => create.mutateAsync(data)}
-            onCreateCategory={async (name, color) =>
-              (await createCategoryMutation.mutateAsync({ name, color })).id
+            onCreateCategory={async (name, color, kind) =>
+              (await createCategoryMutation.mutateAsync({ name, color, kind })).id
             }
             onDeleteCategory={removeCategory}
           />
@@ -263,8 +263,8 @@ function Dashboard() {
             accounts={accounts}
             categories={categories}
             onCreate={(data) => create.mutateAsync(data)}
-            onCreateCategory={async (name, color) =>
-              (await createCategoryMutation.mutateAsync({ name, color })).id
+            onCreateCategory={async (name, color, kind) =>
+              (await createCategoryMutation.mutateAsync({ name, color, kind })).id
             }
             onDeleteCategory={removeCategory}
           />

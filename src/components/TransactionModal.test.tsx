@@ -13,7 +13,8 @@ import { TransactionModal } from "./TransactionModal";
 afterEach(cleanup);
 
 const categories = [
-  { id: "11111111-1111-4111-8111-111111111111", name: "Groceries", color: "#2563eb" },
+  { id: "11111111-1111-4111-8111-111111111111", name: "Groceries", color: "#2563eb", kind: "expend" as const },
+  { id: "33333333-3333-4333-8333-333333333333", name: "Salário", color: "#16a34a", kind: "earn" as const },
 ];
 const accounts = [
   {
@@ -65,7 +66,9 @@ describe("TransactionModal", () => {
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Etiquetas: Nenhuma" })
     );
-    fireEvent.click(screen.getByRole("option", { name: "Groceries" }));
+    // Earn modal only offers earn categories.
+    expect(screen.queryByRole("option", { name: "Groceries" })).toBeNull();
+    fireEvent.click(screen.getByRole("option", { name: "Salário" }));
     fireEvent.click(within(dialog).getByLabelText("Conta"));
     fireEvent.click(
       screen.getByRole("option", { name: "Checking · conta bancária" })
@@ -86,7 +89,7 @@ describe("TransactionModal", () => {
         amount: 1234,
         date: initialDate,
         time: "14:32",
-        tag_ids: [categories[0].id],
+        tag_ids: [categories[1].id],
         account_id: accounts[0].id,
         note: "Paycheck",
         paid: true,
@@ -126,7 +129,7 @@ describe("TransactionModal", () => {
     fireEvent.click(create);
 
     await waitFor(() =>
-      expect(onCreateCategory).toHaveBeenCalledWith("Casa", expect.any(String))
+      expect(onCreateCategory).toHaveBeenCalledWith("Casa", expect.any(String), "expend")
     );
     expect(screen.getByRole("dialog")).toBeTruthy();
   });

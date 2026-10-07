@@ -3,6 +3,9 @@
 **Transaction**  
 A monetary event: earn (inbound), expend (outbound), or transfer (between accounts). Each transaction has an amount (integer cents), date, optional account, optional tags/category, and a `paid` flag indicating settlement status.
 
+**Category** (Tag)  
+A colored label on transactions and recurrence rules. Each has a `kind`, `earn` or `expend`: income and expense categories are separate sets, and a category only goes on transactions of its kind (installments are always `expend`). `saldo inicial` is the earn category marking an Opening Balance.
+
 **Paid**  
 Boolean flag on a transaction indicating whether it has been settled. Seeded as `true` for `date <= today` on insert, `false` for future-dated entries. Trackable only for non-card, non-transfer transactions (see Payment Trackable). Card purchases are never individually marked paid — they settle collectively through a Fatura Payment.
 

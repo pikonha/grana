@@ -138,8 +138,9 @@ export function optimisticCategory(
   name: string,
   id = optimisticId(),
   color: string = DEFAULT_TAG_COLOR,
+  kind: Category["kind"] = "expend",
 ): Category {
-  return { id, userId: "optimistic", name, color };
+  return { id, userId: "optimistic", name, color, kind };
 }
 
 export function newestTransactions<T extends { date: string; time?: string | null }>(rows: T[]) {

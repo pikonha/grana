@@ -8,7 +8,7 @@ import type { TransactionRow } from "#/server/transactions";
 
 afterEach(cleanup);
 
-const category: Category = { id: "cat-1", userId: "u1", name: "Mercado", color: "#2563eb" };
+const category: Category = { id: "cat-1", userId: "u1", name: "Mercado", color: "#2563eb", kind: "expend" };
 
 // The default report period is the current month, so fixtures are relative to it.
 const now = new Date();

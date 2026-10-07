@@ -25,7 +25,7 @@ const recurrenceTagRows = (recurrenceRuleId: string, tagIds: string[]) => tagIds
 export async function createTransactionCore(userId: string, input: TransactionInput) {
   assertMoney(input.amount)
   const tagIds = inputTagIds(input)
-  await assertOwnedTags(userId, tagIds)
+  await assertOwnedTags(userId, tagIds, input.type)
   await assertOwnedAccounts(userId, [input.account_id])
   const todayISO = appToday()
   return db.transaction(async (tx) => {
@@ -42,10 +42,11 @@ export async function createTransactionCore(userId: string, input: TransactionIn
 export async function updateTransactionCore(userId: string, input: UpdateTransactionInput) {
   assertMoney(input.amount)
   const tagIds = inputTagIds(input)
-  await assertOwnedTags(userId, tagIds)
   await assertOwnedAccounts(userId, [input.account_id])
   const [existing] = await db.select({ planId: transaction.installmentPlanId }).from(transaction)
     .where(and(eq(transaction.id, input.id), eq(transaction.userId, userId)))
+  // Installment plans are always expenses, whatever type the caller sent.
+  await assertOwnedTags(userId, tagIds, existing?.planId ? 'expend' : input.type)
   // Installment rows keep amount/date/etc. (SUM(rows) === plan total); only tags change, on every parcela.
   if (existing?.planId) return setInstallmentPlanTags(userId, existing.planId, tagIds).then(() => ({ id: input.id }))
   return db.transaction(async (tx) => {
@@ -90,45 +91,48 @@ export async function createTransferCore(userId: string, input: TransferInput) {
   return { id: row.id }
 }
 
+/** Earn and expend categories are separate sets, so the same name under each kind is two tags. */
+const importTagKey = (kind: string, name: string) => `${kind}:${normalizeForMatch(name)}`
+
 export function uniqueImportTagNames(data: ImportTransactionsInput) {
   const seen = new Set<string>()
-  const names: string[] = []
+  const tags: { name: string; kind: 'earn' | 'expend' }[] = []
   for (const row of data) {
     for (const name of row.tag_names ?? []) {
-      const normalized = normalizeForMatch(name)
-      if (seen.has(normalized)) continue
-      seen.add(normalized)
-      names.push(name)
+      const key = importTagKey(row.type, name)
+      if (seen.has(key)) continue
+      seen.add(key)
+      tags.push({ name, kind: row.type })
     }
   }
-  return names
+  return tags
 }
 
 export async function importTransactionsCore(userId: string, data: ImportTransactionsInput) {
   data.forEach((row) => assertMoney(row.amount))
   await assertOwnedAccounts(userId, data.map((row) => row.account_id))
   return db.transaction(async (tx) => {
-    const uniqueTagNames = uniqueImportTagNames(data)
+    const uniqueTags = uniqueImportTagNames(data)
     const tagMap = new Map<string, string>()
-    if (uniqueTagNames.length) {
+    if (uniqueTags.length) {
       const existingTags = await tx.select().from(tag).where(eq(tag.userId, userId))
-      const normToId = new Map<string, string>()
-      for (const current of existingTags) normToId.set(normalizeForMatch(current.name), current.id)
-      const missing: string[] = []
-      for (const name of uniqueTagNames) {
-        const normalized = normalizeForMatch(name)
-        const existing = normToId.get(normalized)
+      const keyToId = new Map<string, string>()
+      for (const current of existingTags) keyToId.set(importTagKey(current.kind, current.name), current.id)
+      const missing: typeof uniqueTags = []
+      for (const current of uniqueTags) {
+        const key = importTagKey(current.kind, current.name)
+        const existing = keyToId.get(key)
         if (existing) {
-          tagMap.set(normalized, existing)
+          tagMap.set(key, existing)
         } else {
-          missing.push(name)
+          missing.push(current)
         }
       }
       if (missing.length) {
-        const created = await tx.insert(tag).values(missing.map((name, index) => ({
-          userId, name, color: tagColorForIndex(existingTags.length + index),
-        }))).returning({ id: tag.id, name: tag.name })
-        for (const current of created) tagMap.set(normalizeForMatch(current.name), current.id)
+        const created = await tx.insert(tag).values(missing.map((current, index) => ({
+          userId, name: current.name, kind: current.kind, color: tagColorForIndex(existingTags.length + index),
+        }))).returning({ id: tag.id, name: tag.name, kind: tag.kind })
+        for (const current of created) tagMap.set(importTagKey(current.kind, current.name), current.id)
       }
     }
     const todayISO = appToday()
@@ -141,7 +145,7 @@ export async function importTransactionsCore(userId: string, data: ImportTransac
     for (let i = 0; i < data.length; i++) {
       const tagIds = new Set(
         (data[i].tag_names ?? [])
-          .map((name) => tagMap.get(normalizeForMatch(name)))
+          .map((name) => tagMap.get(importTagKey(data[i].type, name)))
           .filter((id): id is string => Boolean(id)),
       )
       for (const tagId of tagIds) links.push({ transactionId: inserted[i].id, tagId })
@@ -206,7 +210,7 @@ export async function setTransactionPaidCore(userId: string, input: TransactionP
 export async function createInstallmentPlanCore(userId: string, input: TransactionInput & { installments: { count: number } }, run: Pick<typeof db, 'transaction'> = db) {
   assertMoney(input.amount)
   const tagIds = inputTagIds(input)
-  await assertOwnedTags(userId, tagIds)
+  await assertOwnedTags(userId, tagIds, input.type)
   if (input.type !== 'expend' || !input.account_id) throw new Error('Installments require an expense and credit-card account')
   const [ownedAccount] = await db.select({ kind: account.kind, prepaid: account.prepaid }).from(account).where(
     and(eq(account.id, input.account_id), eq(account.userId, userId)),
@@ -234,7 +238,7 @@ export async function createInstallmentPlanCore(userId: string, input: Transacti
 export async function createRecurrenceRuleCore(userId: string, input: TransactionInput & { recurrence: { interval: 'daily' | 'weekly' | 'monthly' | 'yearly' } }) {
   assertMoney(input.amount)
   const tagIds = inputTagIds(input)
-  await assertOwnedTags(userId, tagIds)
+  await assertOwnedTags(userId, tagIds, input.type)
   await assertOwnedAccounts(userId, [input.account_id])
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(recurrenceRule).values({
@@ -249,7 +253,7 @@ export async function createRecurrenceRuleCore(userId: string, input: Transactio
 export async function updateRecurrenceRuleCore(userId: string, input: UpdateRecurrenceRuleInput) {
   assertMoney(input.amount)
   const tagIds = inputTagIds(input)
-  await assertOwnedTags(userId, tagIds)
+  await assertOwnedTags(userId, tagIds, input.type)
   await assertOwnedAccounts(userId, [input.account_id])
   return db.transaction(async (tx) => {
     const [row] = await tx.update(recurrenceRule).set({

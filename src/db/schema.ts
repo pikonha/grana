@@ -4,12 +4,15 @@ import { authUser } from './auth-schema'
 export const txTypeEnum = pgEnum('tx_type', ['earn', 'expend', 'transfer'])
 export const intervalEnum = pgEnum('rec_interval', ['daily', 'weekly', 'monthly', 'yearly'])
 export const accountKindEnum = pgEnum('account_kind', ['credit_card', 'bank_account'])
+/** Earn and expend categories are separate sets; a tag only goes on rows of its kind. */
+export const tagKindEnum = pgEnum('tag_kind', ['earn', 'expend'])
 export const syncKindEnum = pgEnum('sync_kind', ['wallet', 'etherfi_cash', 'pluggy'])
 
 const owner = () => text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' })
 
 export const tag = pgTable('tag', {
   id: uuid().primaryKey().defaultRandom(), userId: owner(), name: text().notNull(), color: text().notNull(),
+  kind: tagKindEnum().notNull().default('expend'),
 })
 export const category = tag
 

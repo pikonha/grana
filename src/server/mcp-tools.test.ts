@@ -63,10 +63,15 @@ describe('MCP tool parity', () => {
     expect(() => inputSchema?.parse([{ type: 'expend', amount: 100, date: '2026-10-06', account_id: '00000000-0000-4000-8000-000000000001' }])).toThrow()
   })
 
-  it('deduplicates import tag names after normalization', () => {
+  it('deduplicates import tag names after normalization, per kind', () => {
     expect(uniqueImportTagNames([
       { type: 'expend', amount: 100, date: '2026-10-06', account_id: '00000000-0000-4000-8000-000000000001', tag_names: [' Food ', 'food', 'Café'] },
       { type: 'earn', amount: 200, date: '2026-10-06', account_id: '00000000-0000-4000-8000-000000000001', tag_names: ['CAFE', 'Salary'] },
-    ])).toEqual([' Food ', 'Café', 'Salary'])
+    ])).toEqual([
+      { name: ' Food ', kind: 'expend' },
+      { name: 'Café', kind: 'expend' },
+      { name: 'CAFE', kind: 'earn' },
+      { name: 'Salary', kind: 'earn' },
+    ])
   })
 })

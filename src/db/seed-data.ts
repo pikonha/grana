@@ -77,7 +77,10 @@ export function buildSeedData(anchor = new Date().toISOString().slice(0, 10)): S
     ['groceries', 'Groceries'], ['utilities', 'Utilities'], ['dining', 'Dining'],
     ['transport', 'Transport'], ['subscriptions', 'Subscriptions'], ['health', 'Health'],
     ['shopping', 'Shopping'],
-  ].map(([key, name]) => ({ id: categoryIds[key as keyof typeof categoryIds], userId: SEED_USER_ID, name }))
+  ].map(([key, name]) => ({
+    id: categoryIds[key as keyof typeof categoryIds], userId: SEED_USER_ID, name,
+    kind: key === 'salary' || key === 'freelance' ? 'earn' as const : 'expend' as const,
+  }))
     .map((row, index) => ({ ...row, color: ['#16a34a', '#0891b2', '#d97706', '#2563eb', '#7c3aed', '#dc2626', '#ea580c', '#4f46e5', '#65a30d', '#db2777'][index] }))
 
   const accounts: SeedData['accounts'] = [

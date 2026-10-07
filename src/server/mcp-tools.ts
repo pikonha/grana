@@ -3,7 +3,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { db } from '#/db/index'
 import { account, installmentPlan, recurrenceRule, tag, transaction } from '#/db/schema'
 import { appToday } from '#/lib/dates'
-import { tagColorForIndex } from '#/lib/tag-colors'
 import {
   accountInput,
   categoryInput,
@@ -20,7 +19,7 @@ import {
   updateTransferInput,
 } from './schemas'
 import { createAccountCore, deleteAccountCore, updateAccountCore } from './accounts.core'
-import { deleteTagCore, tagsByRule, tagsByTransaction } from './tags.core'
+import { deleteTagCore, listTagsCore, tagsByRule, tagsByTransaction } from './tags.core'
 import {
   createInstallmentPlanCore,
   createRecurrenceRuleCore,
@@ -105,26 +104,19 @@ export function registerFinanceTools(server: McpServer, userId: string) {
   }, async ({ id }) => text(await syncAccountNowCore(userId, id)))
 
   server.registerTool('list_tags', {
-    description: 'List the colored tags owned by the authenticated user (seeds defaults on first use)',
-  }, async () => {
-    const query = () => db.select().from(tag).where(eq(tag.userId, userId)).orderBy(asc(tag.name))
-    const rows = await query()
-    if (rows.length) return text(rows)
-    const defaults = ['Groceries', 'Transport', 'Utilities', 'Entertainment', 'Salary']
-    await db.insert(tag).values(defaults.map((name, index) => ({ userId, name, color: tagColorForIndex(index) })))
-    return text(await query())
-  })
+    description: 'List the colored tags (categories) owned by the authenticated user, each with its kind (earn or expend); seeds defaults on first use',
+  }, async () => text(await listTagsCore(userId)))
 
   server.registerTool('create_tag', {
-    description: 'Create a colored tag',
+    description: 'Create a colored tag (category). kind: earn tags only go on earn transactions, expend tags only on expend ones',
     inputSchema: categoryInput,
   }, async (data) => {
-    const [row] = await db.insert(tag).values({ userId, name: data.name, color: data.color }).returning({ id: tag.id })
+    const [row] = await db.insert(tag).values({ userId, name: data.name, color: data.color, kind: data.kind }).returning({ id: tag.id })
     return text({ id: row.id })
   })
 
   server.registerTool('delete_tag', {
-    description: 'Delete a tag. Without replacementId, report usage instead of deleting an in-use tag; null removes its links',
+    description: 'Delete a tag. replacementId must be a tag of the same kind. Without replacementId, report usage instead of deleting an in-use tag; null removes its links',
     inputSchema: deleteTagInput,
   }, async (data) => text(await deleteTagCore(userId, data)))
 
