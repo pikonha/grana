@@ -51,7 +51,7 @@ export default function Header() {
           to="/"
           className="display-title flex shrink-0 items-center gap-2 border-2 border-foreground bg-primary px-2 py-1 text-primary-foreground no-underline brutal-shadow"
         >
-          <WalletCards className="size-5" /> Finances
+          <WalletCards className="size-5" /> Grana
         </Link>
         {session?.user && (
           <div className="hidden flex-1 items-center gap-4 whitespace-nowrap text-sm font-medium sm:flex">

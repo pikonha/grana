@@ -24,7 +24,7 @@ function pngSize(filePath: string) {
 describe("PWA", () => {
   it("has an installable manifest with complete icons", () => {
     expect(manifest).toMatchObject({
-      name: "Finances",
+      name: "Grana",
       start_url: "/",
       scope: "/",
       display: "standalone",

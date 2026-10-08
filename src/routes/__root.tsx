@@ -16,7 +16,7 @@ export interface RouterContext {
 }
 const SERVICE_WORKER_SCRIPT = `if('serviceWorker'in navigator){addEventListener('load',function(){navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(function(error){console.error('Service worker registration failed:',error)})})}`;
 const SITE_URL = "https://grana.up.railway.app";
-const APP_TITLE = "Finances";
+const APP_TITLE = "Grana";
 const APP_DESCRIPTION = "Controle pessoal de contas, transações, faturas e recorrências.";
 const OG_IMAGE_URL = `${SITE_URL}/og-image.png`;
 
@@ -51,12 +51,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { property: "og:image:type", content: "image/png" },
       { property: "og:image:width", content: "1200" },
       { property: "og:image:height", content: "630" },
-      { property: "og:image:alt", content: "Finances dashboard preview" },
+      { property: "og:image:alt", content: "Grana dashboard preview" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: APP_TITLE },
       { name: "twitter:description", content: APP_DESCRIPTION },
       { name: "twitter:image", content: OG_IMAGE_URL },
-      { name: "twitter:image:alt", content: "Finances dashboard preview" },
+      { name: "twitter:image:alt", content: "Grana dashboard preview" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
