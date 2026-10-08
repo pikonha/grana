@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { ReportCharts } from "./ReportCharts";
+import { CategoryTooltip, ReportCharts } from "./ReportCharts";
 import type { Category } from "#/db/schema";
 import type { FaturaRow } from "#/server/faturas.core";
 import type { TransactionRow } from "#/server/transactions";
@@ -171,12 +171,12 @@ describe("ReportCharts", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "3 meses" }));
 
-    // Category total spans both months; the delta compares against the 3 months before.
+    // Category total spans both months; the hover hint names the comparison period.
     expect(screen.getAllByText("R$ 140,00").length).toBeGreaterThan(0);
-    expect(screen.getByText(/novo vs\. período anterior/)).toBeTruthy();
+    expect(screen.getByText(/comparar com o período anterior/)).toBeTruthy();
   });
 
-  it("opens a category to list its transactions with the delta vs. last month", () => {
+  it("opens a donut slice (via its legend row) to list the transactions behind it", () => {
     render(
       <ReportCharts
         transactions={[
@@ -191,11 +191,28 @@ describe("ReportCharts", () => {
     );
 
     expect(screen.queryByText("Padaria")).toBeNull();
-    expect(screen.getByText(/\+25% vs\. mês anterior/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Mercado/ }));
 
     expect(screen.getByText("Padaria")).toBeTruthy();
     expect(screen.getByText("Nubank")).toBeTruthy();
+    expect(screen.getByText("100% das despesas")).toBeTruthy();
+  });
+
+  it("hover card compares a category with the previous month and the income", () => {
+    render(
+      <CategoryTooltip
+        row={{ name: "Mercado", color: "#2563eb", value: 5000, previous: 4000, transactions: [] }}
+        total={10000}
+        earn={20000}
+        previousLabel="mês anterior"
+        displayMoney={(cents) => `R$ ${cents / 100}`}
+      />
+    );
+
+    expect(screen.getByText("+25% vs. mês anterior")).toBeTruthy();
+    expect(screen.getByText("R$ 40")).toBeTruthy();
+    expect(screen.getByText("50%")).toBeTruthy(); // das despesas
+    expect(screen.getByText("25%")).toBeTruthy(); // da receita
   });
 });

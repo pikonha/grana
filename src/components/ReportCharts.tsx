@@ -5,6 +5,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -43,6 +46,9 @@ const monthLabel = (yearMonth: string) => {
 };
 
 const MONEY_AXIS_WIDTH = 64;
+/** Slice ceiling: 6 named categories + "Outros". Past ~7 slices a donut stops reading. */
+const MAX_CATEGORY_SLICES = 6;
+const OTHER_LABEL = "Outros";
 const TOOLTIP_CURSOR = { fill: "var(--chart-grid)", fillOpacity: 0.5 } as const;
 /** Months in the period, ending at the month MonthNav shows. */
 const SPANS = [1, 3, 6, 12] as const;
@@ -293,13 +299,12 @@ export function ReportCharts({
         </CardContent>
       </Card>
 
-      <CategoryBreakdown
-        title="Despesas por categoria"
+      <CategoryDonut
         rows={expendByCategory}
+        earn={totals.earn}
         previousLabel={previousLabel}
         displayMoney={displayMoney}
         accountName={accountName}
-        empty="Nenhuma despesa no período selecionado."
       />
 
       <CategoryBreakdown
@@ -375,6 +380,263 @@ export function ReportCharts({
   );
 }
 
+/** Top slices by value; the tail folds into one "Outros" slice that still opens to its rows. */
+function foldSlices(rows: CategoryRow[]): CategoryRow[] {
+  if (rows.length <= MAX_CATEGORY_SLICES + 1) return rows;
+  const tail = rows.slice(MAX_CATEGORY_SLICES);
+  return [
+    ...rows.slice(0, MAX_CATEGORY_SLICES),
+    {
+      name: OTHER_LABEL,
+      color: CHART_OTHER,
+      value: tail.reduce((sum, row) => sum + row.value, 0),
+      previous: tail.reduce((sum, row) => sum + row.previous, 0),
+      transactions: tail.flatMap((row) => row.transactions),
+    },
+  ];
+}
+
+const deltaLabel = (row: { value: number; previous: number }, previousLabel: string) => {
+  if (!row.previous) return `novo vs. ${previousLabel}`;
+  const pct = Math.round(((row.value - row.previous) / row.previous) * 100);
+  return `${pct > 0 ? "+" : ""}${pct}% vs. ${previousLabel}`;
+};
+const share = (part: number, whole: number) =>
+  whole ? `${Math.round((part / whole) * 100)}%` : "—";
+
+/** Hover card for a slice: how big it is, how it moved, and how much of the income it eats. */
+export function CategoryTooltip({
+  row,
+  total,
+  earn,
+  previousLabel,
+  displayMoney,
+}: {
+  row: CategoryRow;
+  total: number;
+  earn: number;
+  previousLabel: string;
+  displayMoney: (cents: number) => string;
+}) {
+  return (
+    <div className="border-2 border-foreground bg-popover px-3 py-2 text-xs text-popover-foreground brutal-shadow">
+      <p className="mb-1.5 flex items-center gap-2 font-bold uppercase tracking-wide">
+        <span
+          aria-hidden="true"
+          className="size-2.5 shrink-0 border border-foreground"
+          style={{ background: row.color }}
+        />
+        {row.name}
+      </p>
+      <div className="space-y-1">
+        <p className="flex justify-between gap-4">
+          <span className="text-muted-foreground">{row.transactions.length} lanç.</span>
+          <span className="font-bold tabular-nums">{displayMoney(row.value)}</span>
+        </p>
+        <p className="flex justify-between gap-4">
+          <span className="text-muted-foreground">das despesas</span>
+          <span className="font-bold tabular-nums">{share(row.value, total)}</span>
+        </p>
+        <p className="flex justify-between gap-4">
+          <span className="text-muted-foreground">da receita</span>
+          <span className="font-bold tabular-nums">
+            {earn ? share(row.value, earn) : "sem receita"}
+          </span>
+        </p>
+        <p className="flex justify-between gap-4 border-t border-border pt-1">
+          <span className="text-muted-foreground">{deltaLabel(row, previousLabel)}</span>
+          <span className="tabular-nums text-muted-foreground">
+            {row.previous ? displayMoney(row.previous) : ""}
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Expense donut: slices wear their tag color with a hard 2px outline; the legend
+ * beside it is the table view and shares the click. A slice (or its legend row)
+ * opens the transactions behind it under the chart.
+ */
+function CategoryDonut({
+  rows,
+  earn,
+  previousLabel,
+  displayMoney,
+  accountName,
+}: {
+  rows: CategoryRow[];
+  earn: number;
+  previousLabel: string;
+  displayMoney: (cents: number) => string;
+  accountName: (id: string) => string;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  const slices = useMemo(() => foldSlices(rows), [rows]);
+  const total = slices.reduce((sum, row) => sum + row.value, 0);
+  const openRow = slices.find((row) => row.name === open) ?? null;
+  const toggle = (name: string) => setOpen((current) => (current === name ? null : name));
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-3">
+        <CardTitle>Despesas por categoria</CardTitle>
+        {slices.length > 0 && (
+          <span className="text-sm font-bold tabular-nums">{displayMoney(total)}</span>
+        )}
+      </CardHeader>
+      <CardContent>
+        {slices.length ? (
+          <>
+            <div className="grid items-center gap-6 md:grid-cols-2">
+              <div className="relative [&_.recharts-sector]:cursor-pointer [&_.recharts-sector]:outline-none">
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie
+                      data={slices}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={64}
+                      outerRadius={100}
+                      startAngle={90}
+                      endAngle={-270}
+                      stroke="var(--foreground)"
+                      strokeWidth={2}
+                      isAnimationActive={false}
+                      onClick={(_, index) => toggle(slices[index].name)}
+                    >
+                      {slices.map((row) => (
+                        <Cell
+                          key={row.name}
+                          fill={row.color}
+                          fillOpacity={open && open !== row.name ? 0.35 : 1}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      // Above the centre label, which is an absolutely positioned sibling.
+                      wrapperStyle={{ zIndex: 10 }}
+                      content={({ payload }) => {
+                        const row = payload?.[0]?.payload as CategoryRow | undefined;
+                        return row ? (
+                          <CategoryTooltip
+                            row={row}
+                            total={total}
+                            earn={earn}
+                            previousLabel={previousLabel}
+                            displayMoney={displayMoney}
+                          />
+                        ) : null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    {openRow ? openRow.name : "Total"}
+                  </span>
+                  <span className="text-lg font-bold tabular-nums">
+                    {displayMoney(openRow ? openRow.value : total)}
+                  </span>
+                  {openRow && (
+                    <span className="text-xs font-bold text-muted-foreground">
+                      {share(openRow.value, total)} das despesas
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Doubles as the table view: every slice's value is readable without hovering. */}
+              <ul className="space-y-1 text-sm">
+                {slices.map((row) => {
+                  const isOpen = open === row.name;
+                  return (
+                    <li key={row.name}>
+                      <button
+                        type="button"
+                        aria-pressed={isOpen}
+                        onClick={() => toggle(row.name)}
+                        className={`flex w-full cursor-pointer items-center gap-2 border-2 px-2 py-1 text-left ${
+                          isOpen
+                            ? "border-foreground bg-primary brutal-shadow"
+                            : "border-transparent hover:bg-muted"
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="size-3 shrink-0 border border-foreground"
+                          style={{ background: row.color }}
+                        />
+                        <span className="min-w-0 truncate font-bold">{row.name}</span>
+                        <span className="ml-auto shrink-0 font-bold tabular-nums">
+                          {displayMoney(row.value)}
+                        </span>
+                        <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                          {share(row.value, total)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+                <li className="px-2 pt-1 text-xs text-muted-foreground">
+                  Clique numa fatia para ver os lançamentos. Passe o mouse para comparar
+                  com o {previousLabel} e com a receita.
+                </li>
+              </ul>
+            </div>
+            {openRow && (
+              <TransactionList
+                rows={openRow.transactions}
+                displayMoney={displayMoney}
+                accountName={accountName}
+                className="mt-4"
+              />
+            )}
+          </>
+        ) : (
+          <Empty>Nenhuma despesa no período selecionado.</Empty>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** The transactions behind a category, largest first. */
+function TransactionList({
+  rows,
+  displayMoney,
+  accountName,
+  className = "",
+}: {
+  rows: PeriodTransaction[];
+  displayMoney: (cents: number) => string;
+  accountName: (id: string) => string;
+  className?: string;
+}) {
+  return (
+    <ul
+      className={`divide-y divide-border border-2 border-foreground bg-background text-xs ${className}`}
+    >
+      {[...rows]
+        .sort((a, b) => b.amount - a.amount)
+        .map((t) => (
+          <li key={t.id} className="flex items-center gap-3 px-3 py-1.5">
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {t.date.slice(8, 10)}/{t.date.slice(5, 7)}
+            </span>
+            <span className="min-w-0 truncate">{t.note || "—"}</span>
+            <span className="hidden shrink-0 text-muted-foreground sm:inline">
+              {accountName(t.accountId)}
+            </span>
+            <span className="ml-auto shrink-0 font-bold tabular-nums">
+              {displayMoney(t.amount)}
+            </span>
+          </li>
+        ))}
+    </ul>
+  );
+}
+
 /**
  * Ranked category bars that double as the table view; a row opens to the
  * transactions behind it. ponytail: plain divs like the dashboard's
@@ -398,11 +660,6 @@ function CategoryBreakdown({
   const [open, setOpen] = useState<string | null>(null);
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   const max = rows[0]?.value ?? 0;
-  const delta = (row: CategoryRow) => {
-    if (!row.previous) return `novo vs. ${previousLabel}`;
-    const pct = Math.round(((row.value - row.previous) / row.previous) * 100);
-    return `${pct > 0 ? "+" : ""}${pct}% vs. ${previousLabel}`;
-  };
 
   return (
     <Card>
@@ -436,7 +693,7 @@ function CategoryBreakdown({
                         {displayMoney(row.value)}
                       </span>
                       <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                        {total ? `${Math.round((row.value / total) * 100)}%` : "—"}
+                        {share(row.value, total)}
                       </span>
                     </div>
                     <div className="mt-1.5 ml-6 flex items-center gap-3">
@@ -448,29 +705,17 @@ function CategoryBreakdown({
                         }}
                       />
                       <span className="truncate text-xs text-muted-foreground">
-                        {row.transactions.length} lanç. · {delta(row)}
+                        {row.transactions.length} lanç. · {deltaLabel(row, previousLabel)}
                       </span>
                     </div>
                   </button>
                   {isOpen && (
-                    <ul className="mt-2 ml-6 divide-y divide-border border-2 border-foreground bg-background text-xs">
-                      {[...row.transactions]
-                        .sort((a, b) => b.amount - a.amount)
-                        .map((t) => (
-                          <li key={t.id} className="flex items-center gap-3 px-3 py-1.5">
-                            <span className="shrink-0 tabular-nums text-muted-foreground">
-                              {t.date.slice(8, 10)}/{t.date.slice(5, 7)}
-                            </span>
-                            <span className="min-w-0 truncate">{t.note || "—"}</span>
-                            <span className="hidden shrink-0 text-muted-foreground sm:inline">
-                              {accountName(t.accountId)}
-                            </span>
-                            <span className="ml-auto shrink-0 font-bold tabular-nums">
-                              {displayMoney(t.amount)}
-                            </span>
-                          </li>
-                        ))}
-                    </ul>
+                    <TransactionList
+                      rows={row.transactions}
+                      displayMoney={displayMoney}
+                      accountName={accountName}
+                      className="mt-2 ml-6"
+                    />
                   )}
                 </li>
               );
