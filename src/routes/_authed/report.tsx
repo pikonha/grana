@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
+import { listAccounts } from "#/server/accounts";
 import { listCategories } from "#/server/categories";
 import { listFaturas } from "#/server/faturas";
 import { listTransactions } from "#/server/transactions";
@@ -23,6 +24,10 @@ function Report() {
   const { data: faturas = [] } = useQuery({
     queryKey: ["faturas"],
     queryFn: () => listFaturas(),
+  });
+  const { data: accounts = [] } = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => listAccounts(),
   });
 
   return (
@@ -54,6 +59,7 @@ function Report() {
         transactions={transactions}
         categories={categories}
         faturas={faturas}
+        accounts={accounts}
         showValues={showValues}
       />
     </main>

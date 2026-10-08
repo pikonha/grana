@@ -4,17 +4,17 @@
 
 export const CHART_IN = "var(--chart-in)";
 export const CHART_OUT = "var(--chart-out)";
-
-/** Fixed slot order — never cycled past the last slot; the tail folds into OTHER. */
-export const CHART_CATEGORICAL = [
-  "var(--chart-c1)",
-  "var(--chart-c2)",
-  "var(--chart-c3)",
-  "var(--chart-c4)",
-  "var(--chart-c5)",
-  "var(--chart-c6)",
-] as const;
+export const CHART_COMMITTED = "var(--chart-committed)";
+/** Untagged / folded tail. Categories wear their own tag color, like the badges do. */
 export const CHART_OTHER = "var(--chart-other)";
+
+/** Brutalist bar: hard 2px outline, no rounding, same width cap as the dashboard's `max-w-10`. */
+export const BAR_PROPS = {
+  stroke: "var(--foreground)",
+  strokeWidth: 2,
+  maxBarSize: 40,
+  isAnimationActive: false,
+} as const;
 
 export const GRID_PROPS = {
   stroke: "var(--chart-grid)",

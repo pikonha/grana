@@ -155,4 +155,47 @@ describe("ReportCharts", () => {
     expect(screen.getAllByText("R$ 90,00").length).toBeGreaterThan(0);
     expect(screen.queryByText("R$ 50,00")).toBeNull();
   });
+
+  it("aggregates a multi-month range ending at the active month", () => {
+    render(
+      <ReportCharts
+        transactions={[
+          tx({ id: "t1", amount: 5000, date: dayThisMonth(10), tags: [category] }),
+          tx({ id: "t2", amount: 9000, date: dayLastMonth(10), tags: [category] }),
+        ]}
+        categories={[category]}
+        faturas={[]}
+        showValues
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "3 meses" }));
+
+    // Category total spans both months; the delta compares against the 3 months before.
+    expect(screen.getAllByText("R$ 140,00").length).toBeGreaterThan(0);
+    expect(screen.getByText(/novo vs\. período anterior/)).toBeTruthy();
+  });
+
+  it("opens a category to list its transactions with the delta vs. last month", () => {
+    render(
+      <ReportCharts
+        transactions={[
+          tx({ id: "t1", amount: 5000, note: "Padaria", tags: [category] }),
+          tx({ id: "t2", amount: 4000, date: dayLastMonth(3), tags: [category] }),
+        ]}
+        categories={[category]}
+        faturas={[]}
+        accounts={[{ id: "a1", name: "Nubank" } as never]}
+        showValues
+      />
+    );
+
+    expect(screen.queryByText("Padaria")).toBeNull();
+    expect(screen.getByText(/\+25% vs\. mês anterior/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Mercado/ }));
+
+    expect(screen.getByText("Padaria")).toBeTruthy();
+    expect(screen.getByText("Nubank")).toBeTruthy();
+  });
 });
