@@ -798,28 +798,30 @@ function Transactions() {
             </div>
           </div>
 
-          <Table>
+          {/* Fixed layout: column widths come from the header, so rows loaded by the
+              infinite scroll can't reflow the columns that are already on screen. */}
+          <Table className="min-w-[28rem] table-fixed md:min-w-0">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-20">Data</TableHead>
+                <TableHead className="w-16 sm:w-24">Data</TableHead>
                 <TableHead>Descrição</TableHead>
-                <TableHead className="hidden sm:table-cell">Etiquetas</TableHead>
-                <TableHead className="hidden md:table-cell">Conta</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="w-20" />
+                <TableHead className="hidden w-40 sm:table-cell">Etiquetas</TableHead>
+                <TableHead className="hidden w-40 md:table-cell">Conta</TableHead>
+                <TableHead className="w-32 text-right sm:w-40">Valor</TableHead>
+                <TableHead className="w-32 sm:w-36" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {pageRows.map((row) => (
                 <TableRow key={row.key} className={row.kind === "transaction" && !row.paid ? "opacity-60" : ""}>
-                    <TableCell className="align-top tabular-nums">
+                    <TableCell className="whitespace-normal align-top tabular-nums">
                       <div className="font-medium">{dayLabel(row.date)}</div>
                       <div className="text-xs capitalize text-muted-foreground">
                         {weekdayLabel(row.date)}
                         {row.kind === "transaction" && row.tx.time && ` · ${row.tx.time.slice(0, 5)}`}
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-[16rem] whitespace-normal align-top">
+                    <TableCell className="whitespace-normal break-words align-top">
                       <div className="flex flex-wrap items-center gap-1">
                         {row.badges.map((badge) => (
                           <Badge key={badge} variant="outline">
@@ -847,10 +849,13 @@ function Transactions() {
                         {row.counterAccount && ` → ${row.counterAccount}`}
                       </div>
                     </TableCell>
-                    <TableCell className="hidden align-top sm:table-cell">
+                    <TableCell className="hidden whitespace-normal align-top sm:table-cell">
                       <TagList tags={row.tags} />
                     </TableCell>
-                    <TableCell className="hidden align-top text-muted-foreground md:table-cell">
+                    <TableCell
+                      className="hidden truncate align-top text-muted-foreground md:table-cell"
+                      title={row.counterAccount ? `${row.account} → ${row.counterAccount}` : undefined}
+                    >
                       {row.account ?? "—"}
                       {row.counterAccount && ` → ${row.counterAccount}`}
                     </TableCell>
@@ -863,7 +868,7 @@ function Transactions() {
                             : ""
                       }`}
                     >
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex flex-wrap items-center justify-end gap-x-1.5">
                         {row.isRecurring && (
                           <RefreshCw
                             aria-label="recorrente"
@@ -882,7 +887,7 @@ function Transactions() {
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-1 sm:gap-2">
                         {row.kind === "transaction" &&
                           isPaymentTrackable(
                             { type: row.tx.type, accountId: row.tx.accountId },
