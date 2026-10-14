@@ -29,9 +29,14 @@ const INSTANCES: Record<number, string> = {
 // a day of catch-up ~2.5 min, but a months-long backfill runs for hours. Move to a keyed RPC with a
 // wider range (Alchemy, Envio HyperRPC, …) if a backfill is needed. Keyless alternatives tested
 // 2026-10: drpc/1rpc/blast/tenderly cap at 10–1000 blocks, publicnode/ankr need a token.
+// RPC_URL (env) overrides the public node; nodeWindow checks it serves the right chain.
+// ponytail: RPC_URL range fixed at Chainstack's 10k-block eth_getLogs cap (~5.5 h per call); a
+// provider with a lower cap fails loudly ("range limit"), make it an env var then.
 const NODES: Record<number, { url: string; range: number }> = {
   8453: { url: 'https://mainnet.base.org', range: 500 },
 }
+const nodeUrl = (chainId: number) => process.env.RPC_URL || NODES[chainId].url
+const nodeRange = (chainId: number) => process.env.RPC_URL ? 10_000 : NODES[chainId].range
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 const CASH_EVENT_EMITTER_OP = '0x380b2e96799405be6e3d965f4044099891881acb'
 /** keccak256('Spend(address,bytes32,uint8,address[],uint256[],uint256[],uint256,uint8)') */
@@ -117,12 +122,12 @@ async function tokenTransfers(chainId: number, address: string, token: string, f
 const topicOf = (address: string) => `0x${address.slice(2).toLowerCase().padStart(64, '0')}`
 const hex = (n: number) => `0x${n.toString(16)}`
 
-/** JSON-RPC call to the chain's public node (`NODES`). */
+/** JSON-RPC call to the chain's node (`RPC_URL`, else the public one in `NODES`). */
 async function nodeRpc(chainId: number, method: string, params: unknown[]) {
   let res: Response
   for (let attempt = 0; ; attempt++) {
     await sleep(attempt ? 2_000 : 250)
-    res = await fetch(NODES[chainId].url, {
+    res = await fetch(nodeUrl(chainId), {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(30_000),
     })
@@ -135,6 +140,8 @@ async function nodeRpc(chainId: number, method: string, params: unknown[]) {
 
 /** Head block and the first block to read for `syncSince`, from the chain's node. */
 async function nodeWindow(chainId: number, syncSince: string) {
+  // A node on another chain would move the cursor over blocks that were never read.
+  if (Number(await nodeRpc(chainId, 'eth_chainId', [])) !== chainId) throw new Error(`rpc ${chainId}: RPC_URL serves another chain`)
   const block = await nodeRpc(chainId, 'eth_getBlockByNumber', ['latest', false]) as { number: string; timestamp: string }
   const [head, headTs] = [Number(block.number), Number(block.timestamp)]
   // ponytail: Base's fixed 2 s block time, 1 h early; planSync drops anything before syncSince.
@@ -144,7 +151,7 @@ async function nodeWindow(chainId: number, syncSince: string) {
 
 /** Stablecoin `Transfer` logs from/to `address` in [fromBlock, toBlock], read from the chain's node. */
 async function nodeTransfers(chainId: number, address: string, fromBlock: number, toBlock: number) {
-  const { range } = NODES[chainId]
+  const range = nodeRange(chainId)
   const byId = new Map<string, TokenTransfer>()
   for (let start = fromBlock; start <= toBlock; start += range) {
     const end = Math.min(start + range - 1, toBlock)

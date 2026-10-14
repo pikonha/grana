@@ -170,6 +170,7 @@ daily `YYYY-MM-DD` · weekly `YYYY-MM-DD` (Monday) · monthly `YYYY-MM` · yearl
 - `PLUGGY_ITEM_IDS` — comma-separated Meu Pluggy Item IDs (one per bank).
 - `PLUGGY_WEBHOOK_SECRET` — value of the `x-webhook-secret` header Pluggy sends to `POST /api/pluggy/webhook`. Any of the four missing → Pluggy sync is off (webhook 503, form hides the section).
 - `BLOCKSCOUT_API_KEY` — Blockscout PRO API key (free at dev.blockscout.com) for crypto account sync on OP (Base uses a keyless public node). Without it sync falls back to the keyless public explorers (~10 req/window, dev only).
+- `RPC_URL` — optional Base JSON-RPC URL replacing the public `mainnet.base.org` (must serve chain 8453; sync checks `eth_chainId`). Set in prod (Chainstack): the public node's rate limit froze the Base wallets' catch-up. `eth_getLogs` range 10k blocks with it.
 
 ## Commands
 - `pnpm dev` · `pnpm build` · `pnpm start` (`node .output/server/index.mjs`)

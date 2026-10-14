@@ -101,6 +101,7 @@ Recurrence occurrences (`recurrence_rule_id` set) match within ±7 days instead 
 - `BLOCKSCOUT_API_KEY`: a free Blockscout PRO key from dev.blockscout.com (5 req/s, 100k credits/day). It covers OP only. Base needs a paid plan (HTTP 402) and the keyless `base.blockscout.com` is behind a Cloudflare challenge (HTTP 403), so Base reads the public node instead (no key).
   - Without it, sync falls back to the keyless public explorers, which allow about 10 RPC requests per hour. That is for local dev only.
   - Etherscan V2 is not an option on the free tier, which refuses Base and OP.
+- `RPC_URL` (optional): a Base JSON-RPC URL (Chainstack) used instead of the public `mainnet.base.org`, which rate-limits a multi-day catch-up until it never finishes. With it, `eth_getLogs` reads 10,000 blocks per call (Chainstack's cap) instead of 500. Sync checks `eth_chainId` and fails if the node serves another chain. The node must return `blockTimestamp` on `eth_getLogs` entries.
 - In the UI (Contas → Sincronização cripto): wallet address, origin (Carteira (Base) / ether.fi Cash (OP)), start date, and the automatic sync toggle.
 
 ## Troubleshooting
