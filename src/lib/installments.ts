@@ -22,3 +22,20 @@ export function addMonths(startDate: string, n: number): string {
   const date = new Date(Date.UTC(y, m - 1 + n, d))
   return date.toISOString().slice(0, 10)
 }
+
+/**
+ * Spending view: an installment plan counts once, at its full total, on the
+ * date of its first remaining parcela (the purchase). Balances and faturas keep
+ * the real per-month rows; only month spend stats use this.
+ */
+export function atPurchase<T extends { installmentPlanId: string | null; amount: number; date: string }>(rows: T[]): T[] {
+  const plans = new Map<string, T>()
+  for (const row of rows) {
+    if (!row.installmentPlanId) continue
+    const seen = plans.get(row.installmentPlanId)
+    plans.set(row.installmentPlanId, seen
+      ? { ...(row.date < seen.date ? row : seen), amount: seen.amount + row.amount }
+      : row)
+  }
+  return [...rows.filter((row) => !row.installmentPlanId), ...plans.values()]
+}

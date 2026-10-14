@@ -7,7 +7,7 @@ import {
   parseMoneyInputToCents,
   signedAmount,
 } from './money'
-import { splitInstallments, addMonths } from './installments'
+import { splitInstallments, addMonths, atPurchase } from './installments'
 import {
   advance,
   localMonthKey,
@@ -159,5 +159,21 @@ describe('app timezone dates', () => {
     vi.setSystemTime(new Date('2026-07-11T12:00:00Z'))
     expect(appToday()).toBe('2026-07-11')
     expect(appMonthKey()).toBe('2026-07')
+  })
+})
+
+describe('atPurchase', () => {
+  it('folds a plan into one row with the total on the first parcela date', () => {
+    const rows = [
+      { id: 'c', installmentPlanId: 'p', amount: 334, date: '2026-03-10' },
+      { id: 'x', installmentPlanId: null, amount: 50, date: '2026-02-01' },
+      { id: 'b', installmentPlanId: 'p', amount: 333, date: '2026-02-10' },
+      { id: 'a', installmentPlanId: 'p', amount: 333, date: '2026-01-10' },
+    ]
+    expect(atPurchase(rows)).toEqual([
+      { id: 'x', installmentPlanId: null, amount: 50, date: '2026-02-01' },
+      { id: 'a', installmentPlanId: 'p', amount: 1000, date: '2026-01-10' },
+    ])
+    expect(rows[3].amount).toBe(333)
   })
 })

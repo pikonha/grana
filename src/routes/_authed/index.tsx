@@ -20,6 +20,7 @@ import type { Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
 import { countsInTotal, isOpeningBalance, prepaidBalanceOf, savingsRate, totalBalanceOf } from "#/lib/money";
 import { appToday } from "#/lib/dates";
+import { atPurchase } from "#/lib/installments";
 import {
   financeQueryKeys,
   newestTransactions,
@@ -77,7 +78,8 @@ function Dashboard() {
     !accountId ||
     transaction.accountId === accountId ||
     transaction.counterAccountId === accountId;
-  const statsTransactions = transactions.filter(
+  // A parcelada purchase counts at full value in the month it was bought.
+  const statsTransactions = atPurchase(transactions).filter(
     (
       transaction
     ): transaction is typeof transaction & { type: "earn" | "expend" } =>
@@ -90,8 +92,8 @@ function Dashboard() {
       inAccount(transaction) &&
       !isOpeningBalance(transaction)
   );
-  // Realized = paid and not in the future; the rest of the month (future
-  // installments, unpaid bills) is the forecast shown under "Gasto no mês".
+  // Realized = paid and not in the future; the rest of the month (unpaid
+  // bills, scheduled rows) is the forecast shown under "Gasto no mês".
   const isRealized = (tx: { paid: boolean; date: string }) =>
     tx.paid && tx.date <= today;
   const monthTransactions = monthStats.filter(isRealized);

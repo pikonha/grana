@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import type { Account, Category } from "#/db/schema";
 import type { TransactionRow } from "#/server/transactions";
+import { atPurchase } from "#/lib/installments";
 import type { FaturaRow } from "#/server/faturas.core";
 import { addMonths } from "#/lib/installments";
 import { formatCentsBRL, isOpeningBalance, savingsRate } from "#/lib/money";
@@ -95,7 +96,8 @@ function sumByCategory(
 
 const inMonths = (transactions: TransactionRow[], keys: string[]) => {
   const set = new Set(keys);
-  return transactions.filter(
+  // A parcelada purchase counts at full value in the month it was bought.
+  return atPurchase(transactions).filter(
     (t): t is PeriodTransaction =>
       t.type !== "transfer" && set.has(t.date.slice(0, 7)) && !isOpeningBalance(t)
   );
