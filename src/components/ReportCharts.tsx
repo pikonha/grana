@@ -17,7 +17,7 @@ import type { Account, Category } from "#/db/schema";
 import type { RecurrenceRuleRow, TransactionRow } from "#/server/transactions";
 import type { FaturaRow } from "#/server/faturas.core";
 import { addMonths } from "#/lib/installments";
-import { formatCentsBRL, isOpeningBalance, savingsRate } from "#/lib/money";
+import { formatCentsBRL, isOpeningBalance, isPaymentTrackable, savingsRate } from "#/lib/money";
 import { localMonthKey, scheduledDatesInMonth, shiftMonth } from "#/lib/recurrence";
 import { MonthNav } from "@/components/MonthNav";
 import {
@@ -115,8 +115,6 @@ const projectedRow = (rule: RecurrenceRuleRow, date: string): TransactionRow => 
   tags: rule.tags,
 });
 
-/** Still to be paid/received: marked unpaid, projected, or dated after today (future parcelas). */
-const isPending = (t: TransactionRow, today: string) => !t.paid || t.date > today;
 /** Pending reads as a lighter, dashed version of the same mark. */
 const PENDING_BAR = { fillOpacity: 0.35, strokeDasharray: "4 3" } as const;
 
@@ -197,7 +195,14 @@ export function ReportCharts({
     [transactions, recurrenceRules, previousMonths]
   );
 
-  const today = localDateKey();
+  // Still to be paid/received: unpaid, projected, or dated after today. Postpaid
+  // card rows never are — the fatura settles them for sure.
+  const isPending = useMemo(() => {
+    const today = localDateKey();
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    return (t: TransactionRow) =>
+      isPaymentTrackable(t, (id) => byId.get(id)) && (!t.paid || t.date > today);
+  }, [accounts]);
   const totals = useMemo(() => {
     let earn = 0;
     let expend = 0;
@@ -205,10 +210,10 @@ export function ReportCharts({
     for (const t of periodTransactions) {
       if (t.type === "earn") earn += t.amount;
       else expend += t.amount;
-      if (isPending(t, today)) pending[t.type] += t.amount;
+      if (isPending(t)) pending[t.type] += t.amount;
     }
     return { earn, expend, pending, net: earn - expend, rate: savingsRate(earn, expend) };
-  }, [periodTransactions, today]);
+  }, [periodTransactions, isPending]);
 
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -233,11 +238,11 @@ export function ReportCharts({
     const empty = { earn: 0, earnPending: 0, expend: 0, expendPending: 0 };
     const sums = new Map(months.map((m) => [m, { ...empty }]));
     for (const t of periodTransactions) {
-      const key = isPending(t, today) ? (`${t.type}Pending` as const) : t.type;
+      const key = isPending(t) ? (`${t.type}Pending` as const) : t.type;
       sums.get(t.date.slice(0, 7))![key] += t.amount;
     }
     return months.map((month) => ({ month: monthLabel(month), ...sums.get(month)! }));
-  }, [periodTransactions, months, today]);
+  }, [periodTransactions, months, isPending]);
 
   const nextFaturaPerCard = useMemo(
     () => faturas.filter((f) => f.isCurrent),
@@ -360,6 +365,7 @@ export function ReportCharts({
         previousLabel={previousLabel}
         displayMoney={displayMoney}
         accountName={accountName}
+        isPending={isPending}
       />
 
       <CategoryBreakdown
@@ -368,6 +374,7 @@ export function ReportCharts({
         previousLabel={previousLabel}
         displayMoney={displayMoney}
         accountName={accountName}
+        isPending={isPending}
         empty="Nenhuma receita no período selecionado."
       />
 
@@ -520,12 +527,14 @@ function CategoryDonut({
   previousLabel,
   displayMoney,
   accountName,
+  isPending,
 }: {
   rows: CategoryRow[];
   earn: number;
   previousLabel: string;
   displayMoney: (cents: number) => string;
   accountName: (id: string) => string;
+  isPending: (t: TransactionRow) => boolean;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const slices = useMemo(() => foldSlices(rows), [rows]);
@@ -644,6 +653,7 @@ function CategoryDonut({
                 rows={openRow.transactions}
                 displayMoney={displayMoney}
                 accountName={accountName}
+                isPending={isPending}
                 className="mt-4"
               />
             )}
@@ -661,14 +671,15 @@ function TransactionList({
   rows,
   displayMoney,
   accountName,
+  isPending,
   className = "",
 }: {
   rows: PeriodTransaction[];
   displayMoney: (cents: number) => string;
   accountName: (id: string) => string;
+  isPending: (t: TransactionRow) => boolean;
   className?: string;
 }) {
-  const today = localDateKey();
   return (
     <ul
       className={`divide-y divide-border border-2 border-foreground bg-background text-xs ${className}`}
@@ -679,14 +690,14 @@ function TransactionList({
           <li
             key={t.id}
             className={`flex items-center gap-3 px-3 py-1.5 ${
-              isPending(t, today) ? "border-dashed bg-muted/50 text-muted-foreground" : ""
+              isPending(t) ? "border-dashed bg-muted/50 text-muted-foreground" : ""
             }`}
           >
             <span className="shrink-0 tabular-nums text-muted-foreground">
               {t.date.slice(8, 10)}/{t.date.slice(5, 7)}
             </span>
             <span className="min-w-0 truncate">{t.note || "—"}</span>
-            {isPending(t, today) && (
+            {isPending(t) && (
               <span className="shrink-0 border border-dashed border-foreground px-1 text-[10px] font-bold uppercase">
                 {t.type === "earn" ? "a receber" : "a pagar"}
               </span>
@@ -714,6 +725,7 @@ function CategoryBreakdown({
   previousLabel,
   displayMoney,
   accountName,
+  isPending,
   empty,
 }: {
   title: string;
@@ -721,6 +733,7 @@ function CategoryBreakdown({
   previousLabel: string;
   displayMoney: (cents: number) => string;
   accountName: (id: string) => string;
+  isPending: (t: TransactionRow) => boolean;
   empty: string;
 }) {
   const [open, setOpen] = useState<string | null>(null);
@@ -780,6 +793,7 @@ function CategoryBreakdown({
                       rows={row.transactions}
                       displayMoney={displayMoney}
                       accountName={accountName}
+                      isPending={isPending}
                       className="mt-2 ml-6"
                     />
                   )}
