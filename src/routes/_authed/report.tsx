@@ -5,7 +5,7 @@ import { useState } from "react";
 import { listAccounts } from "#/server/accounts";
 import { listCategories } from "#/server/categories";
 import { listFaturas } from "#/server/faturas";
-import { listTransactions } from "#/server/transactions";
+import { listRecurrenceRules, listTransactions } from "#/server/transactions";
 import { ReportCharts } from "@/components/ReportCharts";
 import { Button } from "@/components/ui/button";
 
@@ -16,6 +16,10 @@ function Report() {
   const { data: transactions = [] } = useQuery({
     queryKey: ["transactions"],
     queryFn: () => listTransactions(),
+  });
+  const { data: recurrenceRules = [] } = useQuery({
+    queryKey: ["recurrenceRules"],
+    queryFn: () => listRecurrenceRules(),
   });
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
@@ -57,6 +61,7 @@ function Report() {
       </div>
       <ReportCharts
         transactions={transactions}
+        recurrenceRules={recurrenceRules}
         categories={categories}
         faturas={faturas}
         accounts={accounts}

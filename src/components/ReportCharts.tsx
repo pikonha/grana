@@ -14,12 +14,11 @@ import {
   YAxis,
 } from "recharts";
 import type { Account, Category } from "#/db/schema";
-import type { TransactionRow } from "#/server/transactions";
-import { atPurchase } from "#/lib/installments";
+import type { RecurrenceRuleRow, TransactionRow } from "#/server/transactions";
 import type { FaturaRow } from "#/server/faturas.core";
 import { addMonths } from "#/lib/installments";
 import { formatCentsBRL, isOpeningBalance, savingsRate } from "#/lib/money";
-import { localMonthKey, shiftMonth } from "#/lib/recurrence";
+import { localMonthKey, scheduledDatesInMonth, shiftMonth } from "#/lib/recurrence";
 import { MonthNav } from "@/components/MonthNav";
 import {
   AXIS_PROPS,
@@ -94,10 +93,38 @@ function sumByCategory(
   return sums;
 }
 
-const inMonths = (transactions: TransactionRow[], keys: string[]) => {
+/** A recurrence occurrence not materialized yet (date > nextRun), shown so future months can be planned. */
+const projectedRow = (rule: RecurrenceRuleRow, date: string): TransactionRow => ({
+  id: `${rule.id}:${date}`,
+  userId: rule.userId,
+  type: rule.type,
+  amount: rule.amount,
+  date,
+  time: null,
+  accountId: rule.accountId,
+  counterAccountId: null,
+  installmentPlanId: null,
+  recurrenceRuleId: rule.id,
+  periodKey: null,
+  note: rule.note,
+  paid: false,
+  createdAt: null,
+  externalId: null,
+  usdAmount: null,
+  tags: rule.tags,
+});
+
+// Installments count per parcela (the month it's paid), not at purchase like the dashboard.
+const inMonths = (transactions: TransactionRow[], rules: RecurrenceRuleRow[], keys: string[]) => {
   const set = new Set(keys);
-  // A parcelada purchase counts at full value in the month it was bought.
-  return atPurchase(transactions).filter(
+  const projected = rules.flatMap((rule) =>
+    keys.flatMap((month) =>
+      scheduledDatesInMonth(rule.interval, rule.nextRun, month, rule.endDate).map((date) =>
+        projectedRow(rule, date)
+      )
+    )
+  );
+  return [...transactions, ...projected].filter(
     (t): t is PeriodTransaction =>
       t.type !== "transfer" && set.has(t.date.slice(0, 7)) && !isOpeningBalance(t)
   );
@@ -118,6 +145,7 @@ function rankCategories(
 
 type Props = {
   transactions: TransactionRow[];
+  recurrenceRules?: RecurrenceRuleRow[];
   categories: Category[];
   faturas: FaturaRow[];
   accounts?: Account[];
@@ -126,6 +154,7 @@ type Props = {
 
 export function ReportCharts({
   transactions,
+  recurrenceRules = [],
   categories,
   faturas,
   accounts = [],
@@ -154,12 +183,12 @@ export function ReportCharts({
   );
 
   const periodTransactions = useMemo(
-    () => inMonths(transactions, months),
-    [transactions, months]
+    () => inMonths(transactions, recurrenceRules, months),
+    [transactions, recurrenceRules, months]
   );
   const previousTransactions = useMemo(
-    () => inMonths(transactions, previousMonths),
-    [transactions, previousMonths]
+    () => inMonths(transactions, recurrenceRules, previousMonths),
+    [transactions, recurrenceRules, previousMonths]
   );
 
   const totals = useMemo(() => {
