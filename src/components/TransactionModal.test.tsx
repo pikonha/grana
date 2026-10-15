@@ -174,6 +174,35 @@ describe("TransactionModal", () => {
     );
   });
 
+  it("shows each parcela's value when buying in installments", () => {
+    render(
+      <TransactionModal
+        type="expend"
+        accounts={[{ id: accounts[0].id, name: "Nubank", kind: "credit_card" }]}
+        categories={categories}
+        onCreate={vi.fn()}
+        onCreateCategory={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar despesa" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByLabelText("Conta"));
+    fireEvent.click(screen.getByRole("option", { name: "Nubank · cartão de crédito" }));
+    fireEvent.click(within(dialog).getByLabelText("Repetir"));
+    fireEvent.click(screen.getByRole("option", { name: "Parcelado…" }));
+    fireEvent.change(within(dialog).getByLabelText("Valor (R$)"), {
+      target: { value: "10000" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Número de parcelas"), {
+      target: { value: "3" },
+    });
+
+    expect(dialog.textContent?.replace(/\s/g, " ")).toContain(
+      "3× R$ 33,33 (última R$ 33,34)"
+    );
+  });
+
   it("opens edit mode with the transaction already filled", async () => {
     const onUpdate = vi.fn().mockResolvedValue(undefined);
     render(

@@ -26,6 +26,8 @@ import {
   SelectValue,
 } from "./ui/select";
 import { DatePicker, localDateKey } from "./ui/date-picker";
+import { splitInstallments } from "#/lib/installments";
+import { formatCentsBRL } from "#/lib/money";
 
 type RepeatInterval =
   | "none"
@@ -367,6 +369,7 @@ export function TransactionModal({
                   required
                 />
               </Field>
+              <InstallmentPreview amount={amount} count={Number(count)} />
             </div>
           )}
           {error && (
@@ -393,6 +396,18 @@ export function TransactionModal({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function InstallmentPreview({ amount, count }: { amount: number | null; count: number }) {
+  if (!amount || amount <= 0 || !Number.isInteger(count) || count < 2 || count > 360) return null;
+  const parts = splitInstallments(amount, count);
+  const last = parts[count - 1];
+  return (
+    <p className="self-end pb-2 text-sm text-muted-foreground" aria-live="polite">
+      {count}× {formatCentsBRL(parts[0])}
+      {last !== parts[0] && ` (última ${formatCentsBRL(last)})`}
+    </p>
   );
 }
 
