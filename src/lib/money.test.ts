@@ -31,8 +31,9 @@ describe('prepaidBalanceOf summed over accounts (home total)', () => {
 
 describe('isPaymentTrackable', () => {
   const accountKind = (id: string) => {
-    if (id === 'bank-1') return 'bank_account' as const
-    if (id === 'card-1') return 'credit_card' as const
+    if (id === 'bank-1') return { kind: 'bank_account' as const, prepaid: false }
+    if (id === 'card-1') return { kind: 'credit_card' as const, prepaid: false }
+    if (id === 'prepaid-1') return { kind: 'credit_card' as const, prepaid: true }
     return undefined
   }
 
@@ -45,8 +46,12 @@ describe('isPaymentTrackable', () => {
     expect(isPaymentTrackable({ type: 'expend', accountId: 'bank-1' }, accountKind)).toBe(true)
   })
 
-  it('returns false for credit_card (prepaid or not)', () => {
+  it('returns false for a postpaid credit_card', () => {
     expect(isPaymentTrackable({ type: 'expend', accountId: 'card-1' }, accountKind)).toBe(false)
+  })
+
+  it('returns true for a prepaid card', () => {
+    expect(isPaymentTrackable({ type: 'expend', accountId: 'prepaid-1' }, accountKind)).toBe(true)
   })
 
   it('returns false for transfer', () => {

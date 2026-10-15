@@ -438,8 +438,8 @@ function Transactions() {
     [accounts],
   );
 
-  const accountKindById = useMemo(
-    () => (id: string) => accounts.find((a) => a.id === id)?.kind,
+  const accountById = useMemo(
+    () => (id: string) => accounts.find((a) => a.id === id),
     [accounts],
   );
 
@@ -532,7 +532,7 @@ function Transactions() {
   const pendingRows = monthTx.filter(
     (tx) =>
       tx.type !== "transfer" &&
-      isPaymentTrackable({ type: tx.type, accountId: tx.accountId }, accountKindById) &&
+      isPaymentTrackable({ type: tx.type, accountId: tx.accountId }, accountById) &&
       !tx.paid,
   );
   const pendingTotal = pendingRows.reduce(
@@ -891,7 +891,7 @@ function Transactions() {
                         {row.kind === "transaction" &&
                           isPaymentTrackable(
                             { type: row.tx.type, accountId: row.tx.accountId },
-                            accountKindById,
+                            accountById,
                           ) && (
                             <Button
                               type="button"

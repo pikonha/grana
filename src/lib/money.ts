@@ -87,13 +87,13 @@ export function paidByDate(date: string, today: string): boolean {
   return date <= today
 }
 
-/** Predicate: is this transaction trackable for payment status? */
+/** Predicate: is this transaction trackable for payment status? Postpaid cards settle via faturas; prepaid cards behave like a bank account. */
 export function isPaymentTrackable(
   tx: { type: 'earn' | 'expend' | 'transfer'; accountId: string | null },
-  accountKindById: (id: string) => 'credit_card' | 'bank_account' | undefined,
+  accountById: (id: string) => { kind: 'credit_card' | 'bank_account'; prepaid: boolean } | undefined,
 ): boolean {
   if (tx.type === 'transfer') return false
   if (tx.accountId === null) return true
-  const kind = accountKindById(tx.accountId)
-  return kind === 'bank_account'
+  const account = accountById(tx.accountId)
+  return account?.kind === 'bank_account' || (account?.kind === 'credit_card' && account.prepaid)
 }
