@@ -129,7 +129,7 @@ export function StatTile({
 export function ChartLegend({
   items,
 }: {
-  items: readonly { label: string; color: string }[];
+  items: readonly { label: string; color: string; dashed?: boolean }[];
 }) {
   return (
     <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
@@ -137,7 +137,7 @@ export function ChartLegend({
         <li key={item.label} className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="size-2.5 border border-foreground"
+            className={`size-2.5 border border-foreground ${item.dashed ? "border-dashed" : ""}`}
             style={{ background: item.color }}
           />
           {item.label}

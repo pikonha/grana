@@ -36,6 +36,7 @@ import {
 } from "@/components/charts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { localDateKey } from "@/components/ui/date-picker";
 
 const MONTHS_SHORT_PT = [
   "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez",
@@ -114,6 +115,11 @@ const projectedRow = (rule: RecurrenceRuleRow, date: string): TransactionRow => 
   tags: rule.tags,
 });
 
+/** Still to be paid/received: marked unpaid, projected, or dated after today (future parcelas). */
+const isPending = (t: TransactionRow, today: string) => !t.paid || t.date > today;
+/** Pending reads as a lighter, dashed version of the same mark. */
+const PENDING_BAR = { fillOpacity: 0.35, strokeDasharray: "4 3" } as const;
+
 // Installments count per parcela (the month it's paid), not at purchase like the dashboard.
 const inMonths = (transactions: TransactionRow[], rules: RecurrenceRuleRow[], keys: string[]) => {
   const set = new Set(keys);
@@ -168,10 +174,10 @@ export function ReportCharts({
     showValues ? formatCentsBRL(cents) : HIDDEN_MONEY;
   const displayAxisMoney = (cents: number) =>
     showValues ? axisMoney(cents) : HIDDEN_MONEY;
-  const tooltip = (props: { label?: unknown; payload?: readonly unknown[] }) => (
+  const tooltip = (props: { label?: unknown; payload?: readonly { value?: unknown }[] }) => (
     <ChartTooltip
       label={props.label}
-      payload={props.payload as never}
+      payload={props.payload?.filter((row) => Number(row.value) !== 0) as never}
       format={displayMoney}
     />
   );
@@ -191,15 +197,18 @@ export function ReportCharts({
     [transactions, recurrenceRules, previousMonths]
   );
 
+  const today = localDateKey();
   const totals = useMemo(() => {
     let earn = 0;
     let expend = 0;
+    const pending = { earn: 0, expend: 0 };
     for (const t of periodTransactions) {
       if (t.type === "earn") earn += t.amount;
       else expend += t.amount;
+      if (isPending(t, today)) pending[t.type] += t.amount;
     }
-    return { earn, expend, net: earn - expend, rate: savingsRate(earn, expend) };
-  }, [periodTransactions]);
+    return { earn, expend, pending, net: earn - expend, rate: savingsRate(earn, expend) };
+  }, [periodTransactions, today]);
 
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -221,10 +230,14 @@ export function ReportCharts({
 
   // Every month of the period gets a bar, even an empty one, so the axis reads as a timeline.
   const byMonth = useMemo(() => {
-    const sums = new Map(months.map((m) => [m, { earn: 0, expend: 0 }]));
-    for (const t of periodTransactions) sums.get(t.date.slice(0, 7))![t.type] += t.amount;
+    const empty = { earn: 0, earnPending: 0, expend: 0, expendPending: 0 };
+    const sums = new Map(months.map((m) => [m, { ...empty }]));
+    for (const t of periodTransactions) {
+      const key = isPending(t, today) ? (`${t.type}Pending` as const) : t.type;
+      sums.get(t.date.slice(0, 7))![key] += t.amount;
+    }
     return months.map((month) => ({ month: monthLabel(month), ...sums.get(month)! }));
-  }, [periodTransactions, months]);
+  }, [periodTransactions, months, today]);
 
   const nextFaturaPerCard = useMemo(
     () => faturas.filter((f) => f.isCurrent),
@@ -276,8 +289,16 @@ export function ReportCharts({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatTile label="Receitas no período" value={displayMoney(totals.earn)} />
-        <StatTile label="Despesas no período" value={displayMoney(totals.expend)} />
+        <StatTile
+          label="Receitas no período"
+          value={displayMoney(totals.earn)}
+          hint={totals.pending.earn ? `${displayMoney(totals.pending.earn)} a receber` : undefined}
+        />
+        <StatTile
+          label="Despesas no período"
+          value={displayMoney(totals.expend)}
+          hint={totals.pending.expend ? `${displayMoney(totals.pending.expend)} a pagar` : undefined}
+        />
         <StatTile
           label="Resultado"
           value={displayMoney(totals.net)}
@@ -301,6 +322,7 @@ export function ReportCharts({
                 items={[
                   { label: "Receitas", color: CHART_IN },
                   { label: "Despesas", color: CHART_OUT },
+                  { label: "A pagar / receber", color: "var(--muted)", dashed: true },
                 ]}
               />
               <ResponsiveContainer width="100%" height={280}>
@@ -319,8 +341,10 @@ export function ReportCharts({
                     width={MONEY_AXIS_WIDTH}
                   />
                   <Tooltip cursor={TOOLTIP_CURSOR} content={tooltip} />
-                  <Bar dataKey="earn" name="Receitas" fill={CHART_IN} {...BAR_PROPS} />
-                  <Bar dataKey="expend" name="Despesas" fill={CHART_OUT} {...BAR_PROPS} />
+                  <Bar dataKey="earn" stackId="earn" name="Receitas" fill={CHART_IN} {...BAR_PROPS} />
+                  <Bar dataKey="earnPending" stackId="earn" name="A receber" fill={CHART_IN} {...BAR_PROPS} {...PENDING_BAR} />
+                  <Bar dataKey="expend" stackId="expend" name="Despesas" fill={CHART_OUT} {...BAR_PROPS} />
+                  <Bar dataKey="expendPending" stackId="expend" name="A pagar" fill={CHART_OUT} {...BAR_PROPS} {...PENDING_BAR} />
                 </BarChart>
               </ResponsiveContainer>
             </>
@@ -644,6 +668,7 @@ function TransactionList({
   accountName: (id: string) => string;
   className?: string;
 }) {
+  const today = localDateKey();
   return (
     <ul
       className={`divide-y divide-border border-2 border-foreground bg-background text-xs ${className}`}
@@ -651,11 +676,21 @@ function TransactionList({
       {[...rows]
         .sort((a, b) => b.amount - a.amount)
         .map((t) => (
-          <li key={t.id} className="flex items-center gap-3 px-3 py-1.5">
+          <li
+            key={t.id}
+            className={`flex items-center gap-3 px-3 py-1.5 ${
+              isPending(t, today) ? "border-dashed bg-muted/50 text-muted-foreground" : ""
+            }`}
+          >
             <span className="shrink-0 tabular-nums text-muted-foreground">
               {t.date.slice(8, 10)}/{t.date.slice(5, 7)}
             </span>
             <span className="min-w-0 truncate">{t.note || "—"}</span>
+            {isPending(t, today) && (
+              <span className="shrink-0 border border-dashed border-foreground px-1 text-[10px] font-bold uppercase">
+                {t.type === "earn" ? "a receber" : "a pagar"}
+              </span>
+            )}
             <span className="hidden shrink-0 text-muted-foreground sm:inline">
               {accountName(t.accountId)}
             </span>
